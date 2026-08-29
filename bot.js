@@ -72,7 +72,7 @@ const PAYMENT_INFO = {
   }
 };
 
-// Clean Products Catalog (With Out-of-Stock Flags)
+// Clean Products Catalog
 const PRODUCTS_CATALOG = {
   "tvprem_pure": {
     id: "tvprem_pure",
@@ -136,7 +136,7 @@ const PRODUCTS_CATALOG = {
   },
   "fxr": {
     id: "fxr",
-    title: "🔄 FX Replay Pro",
+    title: "🔄 Fxreplay Pro",
     tagline: "The premier backtesting platform for Forex, Crypto & Futures traders.",
     badge: "Trader Choice",
     features: [
@@ -145,9 +145,30 @@ const PRODUCTS_CATALOG = {
       "Automated Trade Analytics & Win-rate tracking",
       "Unlimited charts & historical tick replay"
     ],
-    plans: {
-      "1m": { name: "1 Month Access", price: 1200 },
-      "3m": { name: "3 Months Access", price: 3200, discountNote: "Save 400 ETB" }
+    tiers: {
+      "monthly": {
+        name: "Monthly subscription plan",
+        options: [
+          { code: "fxr_m_mw", name: "Monthly + weekly subscription", price: 2000 },
+          { code: "fxr_m_mw_aj", name: "Monthly + weekly + Abyssinia Journal subscription", price: 2500 },
+          { code: "fxr_m_single", name: "Monthly subscription", price: 750 },
+          { code: "fxr_m_notion", name: "Monthly subscription + Notion pro Journaling template", price: 850 }
+        ]
+      },
+      "twoweeks": {
+        name: "Two weeks subscription plan",
+        options: [
+          { code: "fxr_2w_w", name: "Two weeks + weekly subscription", price: 550 },
+          { code: "fxr_2w_w_notion", name: "Two weeks + weekly subscription + Notion pro journaling template", price: 600 }
+        ]
+      },
+      "weekly": {
+        name: "Weekly subscription plan",
+        options: [
+          { code: "fxr_w_single", name: "Weekly subscription", price: 250 },
+          { code: "fxr_w_notion", name: "Weekly subscription + Notion pro journaling template tool", price: 300 }
+        ]
+      }
     }
   }
 };
@@ -298,7 +319,7 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
         [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
         [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
         [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
-        [Markup.button.callback('🔄 FX Replay Pro', 'VIEW_fxr')],
+        [Markup.button.callback('🔄 Fxreplay Pro', 'VIEW_fxr')],
         [Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')],
         [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
       ])
@@ -351,6 +372,24 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
       );
     }
 
+    // Special Hierarchical Tier Menu for Fxreplay Pro
+    if (prodKey === 'fxr') {
+      let descText = `${product.title}\n` +
+                     `${product.tagline}\n\n` +
+                     `✨ **Key Features:**\n` +
+                     product.features.map(f => `• ${f}`).join('\n') +
+                     `\n\n👇 **Choose your subscription plan:**`;
+
+      const tierButtons = [
+        [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
+        [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
+        [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
+        [Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      ];
+      return ctx.reply(descText, Markup.inlineKeyboard(tierButtons));
+    }
+
+    // Standard Plans Display for TradingView Essential
     let descText = product.title + "\n" +
                    product.tagline + "\n\n" +
                    "✨ Key Features:\n" +
@@ -375,8 +414,81 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
   }
 });
 
-// Select Plan & Proceed to Checkout (Format: PLAN:prodKey:planCode)
-bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess|fxr):([a-z0-9]+)$/, async (ctx) => {
+// Fxreplay Pro Tier Options View: FXR_TIER_<tierKey>
+bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
+  try {
+    const tierKey = ctx.match[1];
+    const product = PRODUCTS_CATALOG['fxr'];
+    const tier = product.tiers[tierKey];
+
+    let descText = `🔄 **Fxreplay Pro — ${tier.name}**\n\n` +
+                   `Please select the package configuration you want:`;
+
+    const optionButtons = tier.options.map(opt => [
+      Markup.button.callback(`👉 ${opt.name} - ${opt.price}birr`, `FXR_OPT_${opt.code}`)
+    ]);
+
+    optionButtons.push([
+      Markup.button.callback('⬅️ Back to Fxreplay Plans', 'VIEW_fxr'),
+      Markup.button.callback('🛍️ Shop', 'ACTION_SHOP')
+    ]);
+
+    ctx.reply(descText, Markup.inlineKeyboard(optionButtons));
+  } catch (err) {
+    console.error("Error in fxr tier action:", err);
+  }
+});
+
+// Fxreplay Pro Option Selected -> Order Summary & Payment
+bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
+  try {
+    const optCode = ctx.match[1];
+    const product = PRODUCTS_CATALOG['fxr'];
+    let selectedOpt = null;
+    let selectedTierName = "";
+
+    for (const tKey in product.tiers) {
+      const match = product.tiers[tKey].options.find(o => o.code === optCode);
+      if (match) {
+        selectedOpt = match;
+        selectedTierName = product.tiers[tKey].name;
+        break;
+      }
+    }
+
+    if (!selectedOpt) {
+      return ctx.reply("Option error. Please return to shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    }
+
+    const session = db.userSessions[ctx.from.id] || {};
+    db.userSessions[ctx.from.id] = {
+      ...session,
+      productId: 'fxr',
+      planKey: optCode,
+      tool: `Fxreplay Pro - ${selectedOpt.name}`,
+      finalPrice: selectedOpt.price
+    };
+
+    ctx.reply(
+      "🧾 **Order Summary:**\n\n" +
+      "📦 **Product:** Fxreplay Pro\n" +
+      `📁 **Plan:** ${selectedTierName}\n` +
+      `✨ **Package:** ${selectedOpt.name}\n` +
+      `💰 **Total Payable:** ${selectedOpt.price} ETB\n\n` +
+      "Please choose your preferred payment method below:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
+        [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
+        [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr')]
+      ])
+    );
+  } catch (err) {
+    console.error("Error in fxr opt action:", err);
+  }
+});
+
+// Select Plan & Proceed to Checkout for other products (TradingView)
+bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ctx) => {
   try {
     const prodKey = ctx.match[1];
     const planCode = ctx.match[2];
@@ -428,9 +540,10 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
     "4. 📈 TradingView Essential + CME Data\n" +
     "   • 1 Month: 1,350 ETB\n" +
     "   • 3 Months: 3,600 ETB\n\n" +
-    "5. 🔄 FX Replay Pro\n" +
-    "   • 1 Month: 1,200 ETB\n" +
-    "   • 3 Months: 3,200 ETB\n\n" +
+    "5. 🔄 Fxreplay Pro\n" +
+    "   • Monthly Plans: From 750 ETB\n" +
+    "   • Two Weeks Plans: From 550 ETB\n" +
+    "   • Weekly Plans: From 250 ETB\n\n" +
     "6. 📓 Abyssinia Journal\n" +
     "   • Status: ✨ Coming Soon!",
     Markup.inlineKeyboard([
@@ -446,8 +559,8 @@ bot.action('ACTION_OFFERS', (ctx) => {
     "🎁 Special Season Offers:\n\n" +
     "🔥 TradingView Essential + CME Data\n" +
     "Get full real-time CME market data with 3-month savings for only 3,600 ETB.\n\n" +
-    "🔥 FX Replay 3-Month Pack\n" +
-    "3 months of unlimited tick backtesting for 3,200 ETB (Save 400 ETB).\n\n" +
+    "🔥 Fxreplay Pro Multi-Timeframe Packs\n" +
+    "Get full backtesting access with weekly, 2-week, or monthly plans starting at just 250 ETB.\n\n" +
     "🔥 Abyssinia Journal Launch Special\n" +
     "Coming soon with early bird lifetime pricing for our channel members!",
     Markup.inlineKeyboard([
@@ -473,7 +586,7 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
       "• Commission Balance: " + (count * 100) + " ETB\n\n" +
       "🔗 Your Unique Referral Link:\n" + refLink,
       Markup.inlineKeyboard([
-        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView and FX Replay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
+        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView and Fxreplay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
         [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
       ])
     );
@@ -513,7 +626,7 @@ bot.action('FAQ_PAYMENT', (ctx) => {
 bot.action('FAQ_OFFICIAL', (ctx) => {
   ctx.reply(
     "🔒 Is this an official subscription?\n\n" +
-    "Yes! All TradingView and FX Replay Pro accounts are 100% genuine, private, and backed by our full-term warranty guarantee.",
+    "Yes! All TradingView and Fxreplay Pro accounts are 100% genuine, private, and backed by our full-term warranty guarantee.",
     Markup.inlineKeyboard([
       [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
       [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
@@ -669,7 +782,7 @@ bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
 // 💳 Payment Details Display (With Monospace Click-to-Copy)
 bot.action(/PAY_(.+)/, (ctx) => {
   const method = ctx.match[1];
-  const userSession = db.userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 1350 };
+  const userSession = db.userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
   userSession.method = method;
 
   let payText = '';
@@ -677,13 +790,13 @@ bot.action(/PAY_(.+)/, (ctx) => {
     payText = "📱 *Telebirr Payment Details*\n\n" +
               "• Phone Number: `" + PAYMENT_INFO.telebirr.number + "` (Tap to copy)\n" +
               "• Account Name: `" + PAYMENT_INFO.telebirr.name + "`\n" +
-              "• Amount: `" + (userSession.finalPrice || 1350) + " ETB`\n\n" +
+              "• Amount: `" + (userSession.finalPrice || 750) + " ETB`\n\n" +
               "⚠️ *Important:* After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
   } else {
     payText = "💎 *Binance Payment Details*\n\n" +
               "• Binance Pay ID: `" + PAYMENT_INFO.binance.id + "` (Tap to copy)\n" +
               "• Payee Name: `" + PAYMENT_INFO.binance.name + "`\n" +
-              "• Amount: `" + ((userSession.finalPrice || 1350) / 100).toFixed(1) + " USDT`\n\n" +
+              "• Amount: `" + ((userSession.finalPrice || 750) / 100).toFixed(1) + " USDT`\n\n" +
               "⚠️ *Important:* After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
   }
 
@@ -695,7 +808,7 @@ bot.on('photo', async (ctx) => {
   try {
     const user = ctx.from;
     db.users.add(user.id);
-    const userSession = db.userSessions[user.id] || { tool: 'Trading Tool', method: 'Direct', finalPrice: 1350 };
+    const userSession = db.userSessions[user.id] || { tool: 'Trading Tool', method: 'Direct', finalPrice: 750 };
     const photo = ctx.message.photo.pop();
 
     if (ADMIN_CHAT_ID) {
@@ -704,7 +817,7 @@ bot.on('photo', async (ctx) => {
                             "Customer: @" + (user.username || 'NoUsername') + "\n" +
                             "User ID: " + user.id + "\n" +
                             "Product: " + userSession.tool + "\n" +
-                            "Amount: " + (userSession.finalPrice || 1350) + " ETB\n" +
+                            "Amount: " + (userSession.finalPrice || 750) + " ETB\n" +
                             "Method: " + userSession.method + "\n\n" +
                             "Copy & paste to deliver credentials:\n" +
                             "/send " + user.id + " Email: ... | Pass: ...";
@@ -769,7 +882,7 @@ bot.command('send', async (ctx) => {
     });
 
     db.ordersCount += 1;
-    db.totalRevenue += 1350;
+    db.totalRevenue += 750;
     ctx.reply("Credentials delivered and recorded in Customer (ID: " + targetUserId + ") Orders Dashboard!");
   } catch (err) {
     ctx.reply("Delivery failed! Error: " + err.message);
@@ -785,7 +898,7 @@ bot.command('broadcast', async (ctx) => {
 
     const text = ctx.message.text.replace('/broadcast', '').trim();
     if (!text) {
-      return ctx.reply('Please include the broadcast text.\n\nExample:\n/broadcast Special flash deal on TradingView Essential + CME Data!');
+      return ctx.reply('Please include the broadcast text.\n\nExample:\n/broadcast Special flash deal on Fxreplay Pro!');
     }
 
     const userList = Array.from(db.users);
