@@ -26,7 +26,6 @@ if (!BOT_TOKEN) {
 const bot = new Telegraf(BOT_TOKEN);
 
 // 🛡️ ANTI-CRASH GLOBAL ERROR HANDLERS
-// Keeps the bot alive even if network drops or Telegram API fails
 bot.catch((err, ctx) => {
   console.error(`⚠️ Telegram Bot Error caught safely for update ${ctx.updateType}:`, err.message);
 });
@@ -39,7 +38,7 @@ process.on('uncaughtException', (err) => {
   console.error('⚠️ Uncaught Exception caught safely:', err.message);
 });
 
-// 🌐 Health check HTTP server (Binds to 0.0.0.0 for Render)
+// 🌐 Health check HTTP server for Render.com
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -50,7 +49,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 HTTP Health Check Server listening on port ${PORT}`);
 });
 
-// ⏰ Self-Ping Keep-Alive (Pings itself every 10 minutes to prevent Render Sleep)
+// ⏰ Self-Ping Keep-Alive
 if (process.env.RENDER_EXTERNAL_URL) {
   setInterval(() => {
     http.get(process.env.RENDER_EXTERNAL_URL, (res) => {
@@ -58,22 +57,18 @@ if (process.env.RENDER_EXTERNAL_URL) {
     }).on('error', (err) => {
       console.log('Self-ping error (benign):', err.message);
     });
-  }, 10 * 60 * 1000); // 10 minutes
+  }, 10 * 60 * 1000);
 }
 
-// Payment details
+// 💳 Updated Payment Accounts Details (Telebirr & Binance)
 const PAYMENT_INFO = {
   telebirr: {
-    number: "0911223344",
-    name: "Abyssinia Trading Services"
+    number: "0938652861",
+    name: "Berihanu"
   },
-  cbe: {
-    account: "1000123456789",
-    name: "Abyssinia Trading Services"
-  },
-  usdt: {
-    address: "TYs8...TRC20USDT",
-    network: "TRC20"
+  binance: {
+    id: "874067761",
+    name: "ABYSSINIAVENDOR"
   }
 };
 
@@ -171,9 +166,7 @@ async function checkAllChannelMemberships(ctx, userId) {
       if (!isMember) {
         missing.push(ch);
       }
-    } catch (err) {
-      // Safe fallback if channel permissions are propagating
-    }
+    } catch (err) {}
   }
 
   return { allJoined: missing.length === 0, missing };
@@ -342,7 +335,7 @@ bot.action(/^VIEW_(tvprem|tvess|fxr|tj)$/, async (ctx) => {
   }
 });
 
-// Select Plan & Proceed to Checkout
+// Select Plan & Proceed to Checkout (Format: PLAN:prodKey:planCode)
 bot.action(/^PLAN:(tvprem|tvess|fxr|tj):([a-z0-9]+)$/, async (ctx) => {
   try {
     const prodKey = ctx.match[1];
@@ -372,8 +365,7 @@ bot.action(/^PLAN:(tvprem|tvess|fxr|tj):([a-z0-9]+)$/, async (ctx) => {
       "Please choose your preferred payment method below:",
       Markup.inlineKeyboard([
         [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-        [Markup.button.callback('🏦 CBE Bank Transfer', 'PAY_CBE')],
-        [Markup.button.callback('💎 Binance USDT (TRC20)', 'PAY_USDT')],
+        [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
         [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
       ])
     );
@@ -440,7 +432,7 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
       "• Commission Balance: " + (count * 100) + " ETB\n\n" +
       "🔗 Your Unique Referral Link:\n" + refLink,
       Markup.inlineKeyboard([
-        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView Premium and FX Replay Pro in Ethiopia instantly via Telebirr & CBE on A T T S!'))],
+        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView Premium and FX Replay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
         [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
       ])
     );
@@ -466,10 +458,9 @@ bot.action('FAQ_DELIVERY', (ctx) => {
 bot.action('FAQ_PAYMENT', (ctx) => {
   ctx.reply(
     "💳 How do I pay?\n\n" +
-    "We accept three convenient payment methods:\n" +
+    "We accept two convenient payment methods:\n" +
     "1. Telebirr (Instant Mobile Money)\n" +
-    "2. Commercial Bank of Ethiopia (CBE)\n" +
-    "3. Binance USDT (TRC20) for crypto traders.\n\n" +
+    "2. Binance Pay for crypto & USDT.\n\n" +
     "Account details and copyable numbers will be shown automatically during checkout.",
     Markup.inlineKeyboard([
       [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
@@ -634,7 +625,7 @@ bot.action('MY_ORDERS_KEYS', (ctx) => {
 
 bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
 
-// Payment Details Display
+// 💳 Payment Details Display (With Monospace Click-to-Copy)
 bot.action(/PAY_(.+)/, (ctx) => {
   const method = ctx.match[1];
   const userSession = db.userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 1800 };
@@ -642,26 +633,20 @@ bot.action(/PAY_(.+)/, (ctx) => {
 
   let payText = '';
   if (method === 'TELEBIRR') {
-    payText = "Telebirr Payment Details:\n\n" +
-              "Number: " + PAYMENT_INFO.telebirr.number + "\n" +
-              "Name: " + PAYMENT_INFO.telebirr.name + "\n" +
-              "Amount: " + (userSession.finalPrice || 1800) + " ETB\n\n" +
-              "Important: After transferring, please send your payment screenshot (receipt) right here in this chat.";
-  } else if (method === 'CBE') {
-    payText = "CBE Bank Transfer Details:\n\n" +
-              "Account: " + PAYMENT_INFO.cbe.account + "\n" +
-              "Name: " + PAYMENT_INFO.cbe.name + "\n" +
-              "Amount: " + (userSession.finalPrice || 1800) + " ETB\n\n" +
-              "Important: After completing the transfer, send your CBE screenshot right here.";
+    payText = "📱 *Telebirr Payment Details*\n\n" +
+              "• Phone Number: `" + PAYMENT_INFO.telebirr.number + "` (Tap to copy)\n" +
+              "• Account Name: `" + PAYMENT_INFO.telebirr.name + "`\n" +
+              "• Amount: `" + (userSession.finalPrice || 1800) + " ETB`\n\n" +
+              "⚠️ *Important:* After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
   } else {
-    payText = "Binance USDT (TRC20):\n\n" +
-              "Address: " + PAYMENT_INFO.usdt.address + "\n" +
-              "Network: " + PAYMENT_INFO.usdt.network + "\n" +
-              "Amount: " + ((userSession.finalPrice || 1800) / 100).toFixed(1) + " USDT\n\n" +
-              "Please send the TXID or transaction screenshot here.";
+    payText = "💎 *Binance Payment Details*\n\n" +
+              "• Binance Pay ID: `" + PAYMENT_INFO.binance.id + "` (Tap to copy)\n" +
+              "• Payee Name: `" + PAYMENT_INFO.binance.name + "`\n" +
+              "• Amount: `" + ((userSession.finalPrice || 1800) / 100).toFixed(1) + " USDT`\n\n" +
+              "⚠️ *Important:* After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
   }
 
-  ctx.reply(payText);
+  ctx.reply(payText, { parse_mode: 'Markdown' });
 });
 
 // Customer Uploads Receipt Photo
