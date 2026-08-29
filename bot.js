@@ -50,10 +50,10 @@ const PAYMENT_INFO = {
   }
 };
 
-// Clean Products Catalog
+// Clean Products Catalog with distinct plan codes
 const PRODUCTS_CATALOG = {
-  TV_PREMIUM_CME: {
-    id: "TV_PREMIUM_CME",
+  "tvprem": {
+    id: "tvprem",
     title: "📊 TradingView Premium + CME Data",
     tagline: "Top tier package with official CME Real-Time market data feed.",
     badge: "Most Popular",
@@ -64,14 +64,14 @@ const PRODUCTS_CATALOG = {
       "400 price alerts & 400 technical alerts",
       "Bar Replay with second-based intervals & volume profile"
     ],
-    plans: [
-      { key: "TV_PREM_1M", name: "1 Month Access", price: 1800 },
-      { key: "TV_PREM_3M", name: "3 Months Access", price: 4800, discountNote: "Save 600 ETB" },
-      { key: "TV_PREM_1Y", name: "1 Year Access (VIP)", price: 16500, discountNote: "Best Value" }
-    ]
+    plans: {
+      "1m": { name: "1 Month Access", price: 1800 },
+      "3m": { name: "3 Months Access", price: 4800, discountNote: "Save 600 ETB" },
+      "1y": { name: "1 Year Access (VIP)", price: 16500, discountNote: "Best Value" }
+    }
   },
-  TV_ESSENTIAL_CME: {
-    id: "TV_ESSENTIAL_CME",
+  "tvess": {
+    id: "tvess",
     title: "📈 TradingView Essential + CME Data",
     tagline: "Essential charting power combined with real-time CME futures data.",
     badge: "Best Value",
@@ -82,14 +82,14 @@ const PRODUCTS_CATALOG = {
       "20 active price alerts & technical alerts",
       "Clean ad-free charts with Bar Replay"
     ],
-    plans: [
-      { key: "TV_ESS_1M", name: "1 Month Access", price: 1350 },
-      { key: "TV_ESS_3M", name: "3 Months Access", price: 3600, discountNote: "Save 450 ETB" },
-      { key: "TV_ESS_1Y", name: "1 Year Access", price: 12000, discountNote: "Great Savings" }
-    ]
+    plans: {
+      "1m": { name: "1 Month Access", price: 1350 },
+      "3m": { name: "3 Months Access", price: 3600, discountNote: "Save 450 ETB" },
+      "1y": { name: "1 Year Access", price: 12000, discountNote: "Great Savings" }
+    }
   },
-  FXREPLAY_PRO: {
-    id: "FXREPLAY_PRO",
+  "fxr": {
+    id: "fxr",
     title: "🔄 FX Replay Pro",
     tagline: "The premier backtesting platform for Forex, Crypto & Futures traders.",
     badge: "Trader Choice",
@@ -99,13 +99,13 @@ const PRODUCTS_CATALOG = {
       "Automated Trade Analytics & Win-rate tracking",
       "Unlimited charts & historical tick replay"
     ],
-    plans: [
-      { key: "FXR_1M", name: "1 Month Access", price: 1200 },
-      { key: "FXR_3M", name: "3 Months Access", price: 3200, discountNote: "Save 400 ETB" }
-    ]
+    plans: {
+      "1m": { name: "1 Month Access", price: 1200 },
+      "3m": { name: "3 Months Access", price: 3200, discountNote: "Save 400 ETB" }
+    }
   },
-  TRADING_JOURNAL: {
-    id: "TRADING_JOURNAL",
+  "tj": {
+    id: "tj",
     title: "📓 Trading Journal",
     tagline: "Automated trading journal & risk analytics system.",
     badge: "Lifetime",
@@ -115,19 +115,19 @@ const PRODUCTS_CATALOG = {
       "Strategy classification & equity curve tracker",
       "Lifetime access & cloud sync"
     ],
-    plans: [
-      { key: "TJ_LIFETIME", name: "Lifetime License", price: 850 }
-    ]
+    plans: {
+      "life": { name: "Lifetime License", price: 850 }
+    }
   }
 };
 
 // In-Memory Database
 const db = {
   users: new Set(),
-  userOrders: {},      // { userId: [ { id, tool, plan, status, activatedDate, expiresDate, credentials } ] }
-  referrals: {},       // { userId: [referredUserIds] }
-  referrerOf: {},      // { newUserId: referrerId }
-  userSessions: {},    // { userId: { tool, method, finalPrice } }
+  userOrders: {},
+  referrals: {},
+  referrerOf: {},
+  userSessions: {},
   ordersCount: 0,
   totalRevenue: 0
 };
@@ -210,7 +210,6 @@ bot.start(async (ctx) => {
   const userId = ctx.from.id;
   db.users.add(userId);
 
-  // Referral tracking
   const startPayload = ctx.message.text.split(' ')[1];
   if (startPayload && startPayload.startsWith('ref_')) {
     const referrerId = startPayload.replace('ref_', '');
@@ -257,23 +256,24 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
     "🛍️ A T T S Product Shop\n\n" +
     "Select a product below to view specifications, available plans, and instant pricing:",
     Markup.inlineKeyboard([
-      [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_PROD_TV_PREMIUM_CME')],
-      [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_PROD_TV_ESSENTIAL_CME')],
-      [Markup.button.callback('🔄 FX Replay Pro', 'VIEW_PROD_FXREPLAY_PRO')],
-      [Markup.button.callback('📓 Trading Journal', 'VIEW_PROD_TRADING_JOURNAL')],
+      [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
+      [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
+      [Markup.button.callback('🔄 FX Replay Pro', 'VIEW_fxr')],
+      [Markup.button.callback('📓 Trading Journal', 'VIEW_tj')],
       [Markup.button.callback('🎁 Current Offers', 'ACTION_OFFERS')],
       [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
     ])
   );
 });
 
-// Dedicated Product Page View: VIEW_PROD_<ID>
-bot.action(/VIEW_PROD_(.+)/, async (ctx) => {
+// Dedicated Product Page View
+bot.action(/^VIEW_(tvprem|tvess|fxr|tj)$/, async (ctx) => {
   const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
   if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
-  const prodId = ctx.match[1];
-  const product = PRODUCTS_CATALOG[prodId];
+  const prodKey = ctx.match[1];
+  const product = PRODUCTS_CATALOG[prodKey];
+
   if (!product) {
     return ctx.reply("Product not found. Please return to Shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
   }
@@ -284,10 +284,11 @@ bot.action(/VIEW_PROD_(.+)/, async (ctx) => {
                  product.features.map(f => "• " + f).join("\n") +
                  "\n\n💳 Available Subscription Plans:\n";
 
-  const planButtons = product.plans.map(plan => {
+  const planButtons = Object.keys(product.plans).map(planCode => {
+    const plan = product.plans[planCode];
     const note = plan.discountNote ? " (" + plan.discountNote + ")" : "";
     const label = "👉 " + plan.name + " — " + plan.price + " ETB" + note;
-    return [Markup.button.callback(label, "SELECT_PLAN_" + prodId + "_" + plan.key)];
+    return [Markup.button.callback(label, "PLAN:" + prodKey + ":" + planCode)];
   });
 
   planButtons.push([
@@ -298,20 +299,23 @@ bot.action(/VIEW_PROD_(.+)/, async (ctx) => {
   ctx.reply(descText, Markup.inlineKeyboard(planButtons));
 });
 
-// Select Plan & Proceed to Checkout
-bot.action(/SELECT_PLAN_([^_]+(?:_[^_]+)*)_([^_]+(?:_[^_]+)*)/, async (ctx) => {
-  const prodId = ctx.match[1];
-  const planKey = ctx.match[2];
-  const product = PRODUCTS_CATALOG[prodId];
-  if (!product) return ctx.reply("Product error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+// Select Plan & Proceed to Checkout (Format: PLAN:prodKey:planCode)
+bot.action(/^PLAN:(tvprem|tvess|fxr|tj):([a-z0-9]+)$/, async (ctx) => {
+  const prodKey = ctx.match[1];
+  const planCode = ctx.match[2];
+  const product = PRODUCTS_CATALOG[prodKey];
 
-  const plan = product.plans.find(p => p.key === planKey) || product.plans[0];
+  if (!product || !product.plans[planCode]) {
+    return ctx.reply("Product plan selection error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+  }
+
+  const plan = product.plans[planCode];
   const session = db.userSessions[ctx.from.id] || {};
 
   db.userSessions[ctx.from.id] = {
     ...session,
-    productId: prodId,
-    planKey: planKey,
+    productId: prodKey,
+    planKey: planCode,
     tool: product.title + " (" + plan.name + ")",
     finalPrice: plan.price
   };
@@ -326,7 +330,7 @@ bot.action(/SELECT_PLAN_([^_]+(?:_[^_]+)*)_([^_]+(?:_[^_]+)*)/, async (ctx) => {
       [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
       [Markup.button.callback('🏦 CBE Bank Transfer', 'PAY_CBE')],
       [Markup.button.callback('💎 Binance USDT (TRC20)', 'PAY_USDT')],
-      [Markup.button.callback('⬅️ Change Plan', "VIEW_PROD_" + prodId)]
+      [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
     ])
   );
 });
