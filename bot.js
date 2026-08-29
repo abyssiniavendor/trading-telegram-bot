@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// Full English Production Bot for Render.com (24/7 Cloud Hosting)
+// 24/7 CRASH-PROOF & AUTO-RECONNECT PRODUCTION SCRIPT
 // ============================================================
 
 require('dotenv').config();
@@ -11,7 +11,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniatradinget";
 
-// 📢 Required Channels that users must join before using the bot
+// 📢 Required Channels that users must join
 const REQUIRED_CHANNELS = [
   { username: "@abyssiniatradinget", name: "Abyssinia Trading Official", url: "https://t.me/abyssiniatradinget" },
   { username: "@abyssiniachat", name: "Abyssinia Trading Chat Community", url: "https://t.me/abyssiniachat" },
@@ -20,21 +20,48 @@ const REQUIRED_CHANNELS = [
 
 if (!BOT_TOKEN) {
   console.error("FATAL: BOT_TOKEN is missing in environment variables!");
+  process.exit(1);
 }
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// 🌐 Health check HTTP server for Render.com Free Web Service
-const PORT = process.env.PORT || 3000;
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('A T T S Telegram Bot (@abyssiniatradingbot) is LIVE 24/7 on Render!');
-});
-server.listen(PORT, () => {
-  console.log('HTTP Health Check Server listening on port ' + PORT);
+// 🛡️ ANTI-CRASH GLOBAL ERROR HANDLERS
+// Keeps the bot alive even if network drops or Telegram API fails
+bot.catch((err, ctx) => {
+  console.error(`⚠️ Telegram Bot Error caught safely for update ${ctx.updateType}:`, err.message);
 });
 
-// Bank & Payment Accounts Details
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Uncaught Exception caught safely:', err.message);
+});
+
+// 🌐 Health check HTTP server (Binds to 0.0.0.0 for Render)
+const PORT = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('✅ A T T S Telegram Bot (@abyssiniatradingbot) is LIVE and HEALTHY 24/7!');
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 HTTP Health Check Server listening on port ${PORT}`);
+});
+
+// ⏰ Self-Ping Keep-Alive (Pings itself every 10 minutes to prevent Render Sleep)
+if (process.env.RENDER_EXTERNAL_URL) {
+  setInterval(() => {
+    http.get(process.env.RENDER_EXTERNAL_URL, (res) => {
+      console.log(`🔄 Self-ping keep-alive status: ${res.statusCode}`);
+    }).on('error', (err) => {
+      console.log('Self-ping error (benign):', err.message);
+    });
+  }, 10 * 60 * 1000); // 10 minutes
+}
+
+// Payment details
 const PAYMENT_INFO = {
   telebirr: {
     number: "0911223344",
@@ -50,7 +77,7 @@ const PAYMENT_INFO = {
   }
 };
 
-// Clean Products Catalog with distinct plan codes
+// Clean Products Catalog
 const PRODUCTS_CATALOG = {
   "tvprem": {
     id: "tvprem",
@@ -145,7 +172,7 @@ async function checkAllChannelMemberships(ctx, userId) {
         missing.push(ch);
       }
     } catch (err) {
-      console.error("Channel check warning for " + ch.username + ":", err.message);
+      // Safe fallback if channel permissions are propagating
     }
   }
 
@@ -207,132 +234,152 @@ function sendFAQMenu(ctx) {
 
 // 1. /start command
 bot.start(async (ctx) => {
-  const userId = ctx.from.id;
-  db.users.add(userId);
+  try {
+    const userId = ctx.from.id;
+    db.users.add(userId);
 
-  const startPayload = ctx.message.text.split(' ')[1];
-  if (startPayload && startPayload.startsWith('ref_')) {
-    const referrerId = startPayload.replace('ref_', '');
-    if (referrerId !== String(userId) && !db.referrerOf[userId]) {
-      db.referrerOf[userId] = referrerId;
-      if (!db.referrals[referrerId]) db.referrals[referrerId] = [];
-      db.referrals[referrerId].push(userId);
+    const startPayload = ctx.message.text.split(' ')[1];
+    if (startPayload && startPayload.startsWith('ref_')) {
+      const referrerId = startPayload.replace('ref_', '');
+      if (referrerId !== String(userId) && !db.referrerOf[userId]) {
+        db.referrerOf[userId] = referrerId;
+        if (!db.referrals[referrerId]) db.referrals[referrerId] = [];
+        db.referrals[referrerId].push(userId);
 
-      try {
-        await bot.telegram.sendMessage(
-          referrerId,
-          "🎉 New trader joined via your referral link!\n\nUser: @" + (ctx.from.username || 'Trader') + "\nYou will receive a 100 ETB bonus upon their first purchase!"
-        );
-      } catch (e) {}
+        try {
+          await bot.telegram.sendMessage(
+            referrerId,
+            "🎉 New trader joined via your referral link!\n\nUser: @" + (ctx.from.username || 'Trader') + "\nYou will receive a 100 ETB bonus upon their first purchase!"
+          );
+        } catch (e) {}
+      }
     }
-  }
 
-  const { allJoined, missing } = await checkAllChannelMemberships(ctx, userId);
-  if (!allJoined) {
-    return sendJoinChannelMessage(ctx, missing);
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, userId);
+    if (!allJoined) {
+      return sendJoinChannelMessage(ctx, missing);
+    }
+    return sendMainMenu(ctx);
+  } catch (err) {
+    console.error("Error in start handler:", err);
   }
-  return sendMainMenu(ctx);
 });
 
 // Verify Channel Join Callback
 bot.action('VERIFY_JOIN', async (ctx) => {
-  const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
-  if (allJoined) {
-    try { await ctx.deleteMessage(); } catch (e) {}
-    ctx.reply("🎉 Verification Successful! Thank you for joining our community.");
-    return sendMainMenu(ctx);
-  } else {
-    const remaining = missing.map(m => m.username).join(', ');
-    return ctx.answerCbQuery("❌ Please join all 3 channels first! Remaining: " + remaining, { show_alert: true });
+  try {
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
+    if (allJoined) {
+      try { await ctx.deleteMessage(); } catch (e) {}
+      ctx.reply("🎉 Verification Successful! Thank you for joining our community.");
+      return sendMainMenu(ctx);
+    } else {
+      const remaining = missing.map(m => m.username).join(', ');
+      return ctx.answerCbQuery("❌ Please join all 3 channels first! Remaining: " + remaining, { show_alert: true });
+    }
+  } catch (err) {
+    console.error("Error in verify callback:", err);
   }
 });
 
 // 🛍️ 2. SHOP NOW / PRODUCT CATALOG
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
-  const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
-  if (!allJoined) return sendJoinChannelMessage(ctx, missing);
+  try {
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
+    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
-  ctx.reply(
-    "🛍️ A T T S Product Shop\n\n" +
-    "Select a product below to view specifications, available plans, and instant pricing:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
-      [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
-      [Markup.button.callback('🔄 FX Replay Pro', 'VIEW_fxr')],
-      [Markup.button.callback('📓 Trading Journal', 'VIEW_tj')],
-      [Markup.button.callback('🎁 Current Offers', 'ACTION_OFFERS')],
-      [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
-    ])
-  );
+    ctx.reply(
+      "🛍️ A T T S Product Shop\n\n" +
+      "Select a product below to view specifications, available plans, and instant pricing:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
+        [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
+        [Markup.button.callback('🔄 FX Replay Pro', 'VIEW_fxr')],
+        [Markup.button.callback('📓 Trading Journal', 'VIEW_tj')],
+        [Markup.button.callback('🎁 Current Offers', 'ACTION_OFFERS')],
+        [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    );
+  } catch (err) {
+    console.error("Error in shop action:", err);
+  }
 });
 
 // Dedicated Product Page View
 bot.action(/^VIEW_(tvprem|tvess|fxr|tj)$/, async (ctx) => {
-  const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
-  if (!allJoined) return sendJoinChannelMessage(ctx, missing);
+  try {
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
+    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
-  const prodKey = ctx.match[1];
-  const product = PRODUCTS_CATALOG[prodKey];
+    const prodKey = ctx.match[1];
+    const product = PRODUCTS_CATALOG[prodKey];
 
-  if (!product) {
-    return ctx.reply("Product not found. Please return to Shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    if (!product) {
+      return ctx.reply("Product not found. Please return to Shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    }
+
+    let descText = product.title + "\n" +
+                   product.tagline + "\n\n" +
+                   "✨ Key Features:\n" +
+                   product.features.map(f => "• " + f).join("\n") +
+                   "\n\n💳 Available Subscription Plans:\n";
+
+    const planButtons = Object.keys(product.plans).map(planCode => {
+      const plan = product.plans[planCode];
+      const note = plan.discountNote ? " (" + plan.discountNote + ")" : "";
+      const label = "👉 " + plan.name + " — " + plan.price + " ETB" + note;
+      return [Markup.button.callback(label, "PLAN:" + prodKey + ":" + planCode)];
+    });
+
+    planButtons.push([
+      Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'),
+      Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
+    ]);
+
+    ctx.reply(descText, Markup.inlineKeyboard(planButtons));
+  } catch (err) {
+    console.error("Error in view product:", err);
   }
-
-  let descText = product.title + "\n" +
-                 product.tagline + "\n\n" +
-                 "✨ Key Features:\n" +
-                 product.features.map(f => "• " + f).join("\n") +
-                 "\n\n💳 Available Subscription Plans:\n";
-
-  const planButtons = Object.keys(product.plans).map(planCode => {
-    const plan = product.plans[planCode];
-    const note = plan.discountNote ? " (" + plan.discountNote + ")" : "";
-    const label = "👉 " + plan.name + " — " + plan.price + " ETB" + note;
-    return [Markup.button.callback(label, "PLAN:" + prodKey + ":" + planCode)];
-  });
-
-  planButtons.push([
-    Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'),
-    Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
-  ]);
-
-  ctx.reply(descText, Markup.inlineKeyboard(planButtons));
 });
 
-// Select Plan & Proceed to Checkout (Format: PLAN:prodKey:planCode)
+// Select Plan & Proceed to Checkout
 bot.action(/^PLAN:(tvprem|tvess|fxr|tj):([a-z0-9]+)$/, async (ctx) => {
-  const prodKey = ctx.match[1];
-  const planCode = ctx.match[2];
-  const product = PRODUCTS_CATALOG[prodKey];
+  try {
+    const prodKey = ctx.match[1];
+    const planCode = ctx.match[2];
+    const product = PRODUCTS_CATALOG[prodKey];
 
-  if (!product || !product.plans[planCode]) {
-    return ctx.reply("Product plan selection error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    if (!product || !product.plans[planCode]) {
+      return ctx.reply("Product plan selection error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    }
+
+    const plan = product.plans[planCode];
+    const session = db.userSessions[ctx.from.id] || {};
+
+    db.userSessions[ctx.from.id] = {
+      ...session,
+      productId: prodKey,
+      planKey: planCode,
+      tool: product.title + " (" + plan.name + ")",
+      finalPrice: plan.price
+    };
+
+    ctx.reply(
+      "🧾 Order Summary:\n\n" +
+      "📦 Product: " + product.title + "\n" +
+      "⏱️ Plan: " + plan.name + "\n" +
+      "💰 Total Payable: " + plan.price + " ETB\n\n" +
+      "Please choose your preferred payment method below:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
+        [Markup.button.callback('🏦 CBE Bank Transfer', 'PAY_CBE')],
+        [Markup.button.callback('💎 Binance USDT (TRC20)', 'PAY_USDT')],
+        [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
+      ])
+    );
+  } catch (err) {
+    console.error("Error in plan select:", err);
   }
-
-  const plan = product.plans[planCode];
-  const session = db.userSessions[ctx.from.id] || {};
-
-  db.userSessions[ctx.from.id] = {
-    ...session,
-    productId: prodKey,
-    planKey: planCode,
-    tool: product.title + " (" + plan.name + ")",
-    finalPrice: plan.price
-  };
-
-  ctx.reply(
-    "🧾 Order Summary:\n\n" +
-    "📦 Product: " + product.title + "\n" +
-    "⏱️ Plan: " + plan.name + "\n" +
-    "💰 Total Payable: " + plan.price + " ETB\n\n" +
-    "Please choose your preferred payment method below:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-      [Markup.button.callback('🏦 CBE Bank Transfer', 'PAY_CBE')],
-      [Markup.button.callback('💎 Binance USDT (TRC20)', 'PAY_USDT')],
-      [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
-    ])
-  );
 });
 
 // 💳 3. PRICING OVERVIEW
@@ -379,23 +426,27 @@ bot.action('ACTION_OFFERS', (ctx) => {
 
 // 🤝 5. REFERRAL PROGRAM
 bot.action('ACTION_REFERRAL', async (ctx) => {
-  const userId = ctx.from.id;
-  const botInfo = await ctx.telegram.getMe();
-  const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
-  const count = (db.referrals[userId] || []).length;
+  try {
+    const userId = ctx.from.id;
+    const botInfo = await ctx.telegram.getMe();
+    const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
+    const count = (db.referrals[userId] || []).length;
 
-  ctx.reply(
-    "🤝 Partner & Referral Program (Invite & Earn):\n\n" +
-    "Invite fellow traders and earn 100 ETB Commission for every purchase they make!\n\n" +
-    "📊 Your Performance:\n" +
-    "• Traders Invited: " + count + " people\n" +
-    "• Commission Balance: " + (count * 100) + " ETB\n\n" +
-    "🔗 Your Unique Referral Link:\n" + refLink,
-    Markup.inlineKeyboard([
-      [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView Premium and FX Replay Pro in Ethiopia instantly via Telebirr & CBE on A T T S!'))],
-      [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
-    ])
-  );
+    ctx.reply(
+      "🤝 Partner & Referral Program (Invite & Earn):\n\n" +
+      "Invite fellow traders and earn 100 ETB Commission for every purchase they make!\n\n" +
+      "📊 Your Performance:\n" +
+      "• Traders Invited: " + count + " people\n" +
+      "• Commission Balance: " + (count * 100) + " ETB\n\n" +
+      "🔗 Your Unique Referral Link:\n" + refLink,
+      Markup.inlineKeyboard([
+        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView Premium and FX Replay Pro in Ethiopia instantly via Telebirr & CBE on A T T S!'))],
+        [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    );
+  } catch (err) {
+    console.error("Error in referral action:", err);
+  }
 });
 
 // ❓ 6. FAQ HANDLERS
@@ -615,53 +666,57 @@ bot.action(/PAY_(.+)/, (ctx) => {
 
 // Customer Uploads Receipt Photo
 bot.on('photo', async (ctx) => {
-  const user = ctx.from;
-  db.users.add(user.id);
-  const userSession = db.userSessions[user.id] || { tool: 'Trading Tool', method: 'Direct', finalPrice: 1800 };
-  const photo = ctx.message.photo.pop();
+  try {
+    const user = ctx.from;
+    db.users.add(user.id);
+    const userSession = db.userSessions[user.id] || { tool: 'Trading Tool', method: 'Direct', finalPrice: 1800 };
+    const photo = ctx.message.photo.pop();
 
-  if (ADMIN_CHAT_ID) {
-    try {
-      const captionText = "NEW PAYMENT RECEIPT RECEIVED!\n\n" +
-                          "Customer: @" + (user.username || 'NoUsername') + "\n" +
-                          "User ID: " + user.id + "\n" +
-                          "Product: " + userSession.tool + "\n" +
-                          "Amount: " + (userSession.finalPrice || 1800) + " ETB\n" +
-                          "Method: " + userSession.method + "\n\n" +
-                          "Copy & paste to deliver credentials:\n" +
-                          "/send " + user.id + " Email: ... | Pass: ...";
+    if (ADMIN_CHAT_ID) {
+      try {
+        const captionText = "NEW PAYMENT RECEIPT RECEIVED!\n\n" +
+                            "Customer: @" + (user.username || 'NoUsername') + "\n" +
+                            "User ID: " + user.id + "\n" +
+                            "Product: " + userSession.tool + "\n" +
+                            "Amount: " + (userSession.finalPrice || 1800) + " ETB\n" +
+                            "Method: " + userSession.method + "\n\n" +
+                            "Copy & paste to deliver credentials:\n" +
+                            "/send " + user.id + " Email: ... | Pass: ...";
 
-      await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
-        caption: captionText,
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback("Reject Receipt (" + user.id + ")", "REJECT_" + user.id)]
-        ])
-      });
-    } catch (err) {
-      console.error('Error forwarding to admin:', err);
+        await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
+          caption: captionText,
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback("Reject Receipt (" + user.id + ")", "REJECT_" + user.id)]
+          ])
+        });
+      } catch (err) {
+        console.error('Error forwarding to admin:', err);
+      }
     }
-  }
 
-  ctx.reply("Receipt Received! Our team is verifying your transaction. Your login access keys will be delivered right here within 5 to 15 minutes.");
+    ctx.reply("Receipt Received! Our team is verifying your transaction. Your login access keys will be delivered right here within 5 to 15 minutes.");
+  } catch (err) {
+    console.error("Error handling photo upload:", err);
+  }
 });
 
 // ✍️ Robust Manual Admin Delivery (/send <userId> <credentials>)
 bot.command('send', async (ctx) => {
-  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
-    return ctx.reply('This command is restricted to the administrator only.');
-  }
-
-  const messageText = ctx.message.text.trim();
-  const parts = messageText.split(' ');
-
-  if (parts.length < 3) {
-    return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nExample:\n/send 5056286354 Email: user@vip.com | Pass: 123456');
-  }
-
-  const targetUserId = parts[1];
-  const customMessage = parts.slice(2).join(' ');
-
   try {
+    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
+      return ctx.reply('This command is restricted to the administrator only.');
+    }
+
+    const messageText = ctx.message.text.trim();
+    const parts = messageText.split(' ');
+
+    if (parts.length < 3) {
+      return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nExample:\n/send 5056286354 Email: user@vip.com | Pass: 123456');
+    }
+
+    const targetUserId = parts[1];
+    const customMessage = parts.slice(2).join(' ');
+
     const now = new Date();
     const exp = new Date();
     exp.setDate(now.getDate() + 30);
@@ -676,7 +731,6 @@ bot.command('send', async (ctx) => {
 
     await bot.telegram.sendMessage(targetUserId, deliveryNotification);
 
-    // Save into customer's order history
     if (!db.userOrders[targetUserId]) db.userOrders[targetUserId] = [];
     db.userOrders[targetUserId].push({
       id: 1000 + db.userOrders[targetUserId].length + 1,
@@ -698,28 +752,32 @@ bot.command('send', async (ctx) => {
 
 // 📢 Mass Broadcast Command (/broadcast <message>)
 bot.command('broadcast', async (ctx) => {
-  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
-    return ctx.reply('Administrator access required.');
+  try {
+    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
+      return ctx.reply('Administrator access required.');
+    }
+
+    const text = ctx.message.text.replace('/broadcast', '').trim();
+    if (!text) {
+      return ctx.reply('Please include the broadcast text.\n\nExample:\n/broadcast Special flash deal on TradingView Premium + CME Data!');
+    }
+
+    const userList = Array.from(db.users);
+    let successCount = 0;
+
+    ctx.reply("Sending broadcast to " + userList.length + " registered bot users...");
+
+    for (const uid of userList) {
+      try {
+        await bot.telegram.sendMessage(uid, "Announcement from A T T S:\n\n" + text);
+        successCount++;
+      } catch (e) {}
+    }
+
+    ctx.reply("Broadcast completed! Successfully reached " + successCount + " traders.");
+  } catch (err) {
+    console.error("Error in broadcast command:", err);
   }
-
-  const text = ctx.message.text.replace('/broadcast', '').trim();
-  if (!text) {
-    return ctx.reply('Please include the broadcast text.\n\nExample:\n/broadcast Special flash deal on TradingView Premium + CME Data!');
-  }
-
-  const userList = Array.from(db.users);
-  let successCount = 0;
-
-  ctx.reply("Sending broadcast to " + userList.length + " registered bot users...");
-
-  for (const uid of userList) {
-    try {
-      await bot.telegram.sendMessage(uid, "Announcement from A T T S:\n\n" + text);
-      successCount++;
-    } catch (e) {}
-  }
-
-  ctx.reply("Broadcast completed! Successfully reached " + successCount + " traders.");
 });
 
 // 📊 Admin Analytics (/stats)
@@ -771,8 +829,18 @@ bot.action(/REJECT_(\d+)/, async (ctx) => {
   }
 });
 
-// Launch Bot
-bot.launch().then(() => console.log('A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7!'));
+// Launch Bot with Auto-Reconnect
+async function startBotWithRetry() {
+  try {
+    await bot.launch();
+    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7!');
+  } catch (err) {
+    console.error('Bot launch error, retrying in 5 seconds...', err.message);
+    setTimeout(startBotWithRetry, 5000);
+  }
+}
+
+startBotWithRetry();
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
