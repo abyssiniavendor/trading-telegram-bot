@@ -118,12 +118,12 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   channelButtons.push([Markup.button.callback('✅ I Have Joined All Channels (Verify)', 'VERIFY_JOIN')]);
 
   return ctx.reply(
-    "⚠️ Access Required Before Using A T T S Bot!\n\n" +
+    "⚠️ Access Required\n\n" +
     "To access our premium trading tools, pricing catalogs, and instant orders, you must first join our official community channels:\n\n" +
-    "1️⃣ @abyssiniatradinget (Official Channel)\n" +
-    "2️⃣ @abyssiniachat (Trading Discussion Community)\n" +
-    "3️⃣ @abyssiniattstore (Store & Updates)\n\n" +
-    "👉 Click the buttons below to join each channel, then click Verify:",
+    "1️⃣ @abyssiniatradinget\n" +
+    "2️⃣ @abyssiniachat\n" +
+    "3️⃣ @abyssiniattstore\n\n" +
+    "After joining all channels. tap ✅ Verify Membership below Click the buttons below.",
     Markup.inlineKeyboard(channelButtons)
   );
 }
