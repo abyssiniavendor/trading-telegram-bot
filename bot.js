@@ -60,7 +60,7 @@ if (process.env.RENDER_EXTERNAL_URL) {
   }, 10 * 60 * 1000);
 }
 
-// 💳 Updated Payment Accounts Details (Telebirr & Binance)
+// 💳 Payment Accounts Details (Telebirr & Binance)
 const PAYMENT_INFO = {
   telebirr: {
     number: "0938652861",
@@ -72,24 +72,48 @@ const PAYMENT_INFO = {
   }
 };
 
-// Clean Products Catalog
+// Clean Products Catalog (With Out-of-Stock Flags)
 const PRODUCTS_CATALOG = {
+  "tvprem_pure": {
+    id: "tvprem_pure",
+    title: "📊 TradingView Premium",
+    tagline: "Top tier TradingView plan with 25 indicators, 8 charts/tab, and second intervals.",
+    badge: "Out of Stock",
+    outOfStock: true,
+    features: [
+      "25 indicators per chart layout",
+      "8 charts in one layout",
+      "400 price alerts & 400 technical alerts",
+      "Second-based bar replay"
+    ]
+  },
   "tvprem": {
     id: "tvprem",
     title: "📊 TradingView Premium + CME Data",
     tagline: "Top tier package with official CME Real-Time market data feed.",
-    badge: "Most Popular",
+    badge: "Out of Stock",
+    outOfStock: true,
     features: [
       "Highest plan: 25 indicators per chart layout",
       "Official Real-Time CME Group data (ES, NQ, YM, GC, CL)",
-      "8 simultaneous charts per tab layout",
-      "400 price alerts & 400 technical alerts",
-      "Bar Replay with second-based intervals & volume profile"
+      "8 simultaneous charts per tab layout"
+    ]
+  },
+  "tvess_pure": {
+    id: "tvess_pure",
+    title: "📈 TradingView Essential",
+    tagline: "Essential charting plan with 5 indicators and 2 charts per layout.",
+    badge: "Active",
+    features: [
+      "5 indicators per chart layout",
+      "2 charts in one layout",
+      "20 active price alerts & technical alerts",
+      "Ad-free charting with Bar Replay"
     ],
     plans: {
-      "1m": { name: "1 Month Access", price: 1800 },
-      "3m": { name: "3 Months Access", price: 4800, discountNote: "Save 600 ETB" },
-      "1y": { name: "1 Year Access (VIP)", price: 16500, discountNote: "Best Value" }
+      "1m": { name: "1 Month Access", price: 1100 },
+      "3m": { name: "3 Months Access", price: 2950, discountNote: "Save 350 ETB" },
+      "1y": { name: "1 Year Access", price: 9500, discountNote: "Best Value" }
     }
   },
   "tvess": {
@@ -124,21 +148,6 @@ const PRODUCTS_CATALOG = {
     plans: {
       "1m": { name: "1 Month Access", price: 1200 },
       "3m": { name: "3 Months Access", price: 3200, discountNote: "Save 400 ETB" }
-    }
-  },
-  "tj": {
-    id: "tj",
-    title: "📓 Trading Journal",
-    tagline: "Automated trading journal & risk analytics system.",
-    badge: "Lifetime",
-    features: [
-      "Automatic trade logging & PnL calculations",
-      "Risk management & drawdown monitoring",
-      "Strategy classification & equity curve tracker",
-      "Lifetime access & cloud sync"
-    ],
-    plans: {
-      "life": { name: "Lifetime License", price: 850 }
     }
   }
 };
@@ -282,14 +291,15 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
     if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
     ctx.reply(
-      "🛍️ A T T S Product Shop\n\n" +
+      "🛍️ **A T T S Product Shop**\n\n" +
       "Select a product below to view specifications, available plans, and instant pricing:",
       Markup.inlineKeyboard([
+        [Markup.button.callback('📊 TradingView Premium', 'VIEW_tvprem_pure')],
         [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
+        [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
         [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
         [Markup.button.callback('🔄 FX Replay Pro', 'VIEW_fxr')],
-        [Markup.button.callback('📓 Trading Journal', 'VIEW_tj')],
-        [Markup.button.callback('🎁 Current Offers', 'ACTION_OFFERS')],
+        [Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')],
         [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
       ])
     );
@@ -298,8 +308,23 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
   }
 });
 
+// Abyssinia Journal - Coming Soon Handler
+bot.action('VIEW_abyssinia_journal', (ctx) => {
+  ctx.reply(
+    "📓 **Abyssinia Journal**\n\n" +
+    "✨ *Coming soon!*\n\n" +
+    "Our proprietary automated trade journaling, risk management, and equity curve tracking system is currently in final testing.\n\n" +
+    "📢 Stay tuned and keep updated on our official channel @abyssiniatradinget for the launch date!",
+    Markup.inlineKeyboard([
+      [Markup.button.url('📢 Follow Updates in Channel', 'https://t.me/abyssiniatradinget')],
+      [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
+      [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+    ])
+  );
+});
+
 // Dedicated Product Page View
-bot.action(/^VIEW_(tvprem|tvess|fxr|tj)$/, async (ctx) => {
+bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
     if (!allJoined) return sendJoinChannelMessage(ctx, missing);
@@ -309,6 +334,21 @@ bot.action(/^VIEW_(tvprem|tvess|fxr|tj)$/, async (ctx) => {
 
     if (!product) {
       return ctx.reply("Product not found. Please return to Shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    }
+
+    // Out of Stock Handling
+    if (product.outOfStock) {
+      return ctx.reply(
+        `${product.title}\n\n` +
+        "🚫 **STATUS: OUT OF STOCK**\n\n" +
+        "We are currently restocking this subscription package. Subscription slots will be available soon!\n\n" +
+        "📢 **Keep updated on our official channel @abyssiniatradinget for instant restock announcements!**",
+        Markup.inlineKeyboard([
+          [Markup.button.url('📢 Go To Official Channel', 'https://t.me/abyssiniatradinget')],
+          [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
+          [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        ])
+      );
     }
 
     let descText = product.title + "\n" +
@@ -336,13 +376,13 @@ bot.action(/^VIEW_(tvprem|tvess|fxr|tj)$/, async (ctx) => {
 });
 
 // Select Plan & Proceed to Checkout (Format: PLAN:prodKey:planCode)
-bot.action(/^PLAN:(tvprem|tvess|fxr|tj):([a-z0-9]+)$/, async (ctx) => {
+bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess|fxr):([a-z0-9]+)$/, async (ctx) => {
   try {
     const prodKey = ctx.match[1];
     const planCode = ctx.match[2];
     const product = PRODUCTS_CATALOG[prodKey];
 
-    if (!product || !product.plans[planCode]) {
+    if (!product || !product.plans || !product.plans[planCode]) {
       return ctx.reply("Product plan selection error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
     }
 
@@ -378,20 +418,21 @@ bot.action(/^PLAN:(tvprem|tvess|fxr|tj):([a-z0-9]+)$/, async (ctx) => {
 bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   ctx.reply(
     "💳 Official Pricing Overview:\n\n" +
-    "1. 📊 TradingView Premium + CME Data\n" +
-    "   • 1 Month: 1,800 ETB\n" +
-    "   • 3 Months: 4,800 ETB (Save 600 ETB)\n" +
-    "   • 1 Year VIP: 16,500 ETB\n\n" +
-    "2. 📈 TradingView Essential + CME Data\n" +
+    "1. 📊 TradingView Premium\n" +
+    "   • Status: 🚫 Out of Stock (Check @abyssiniatradinget)\n\n" +
+    "2. 📊 TradingView Premium + CME Data\n" +
+    "   • Status: 🚫 Out of Stock (Check @abyssiniatradinget)\n\n" +
+    "3. 📈 TradingView Essential\n" +
+    "   • 1 Month: 1,100 ETB\n" +
+    "   • 3 Months: 2,950 ETB\n\n" +
+    "4. 📈 TradingView Essential + CME Data\n" +
     "   • 1 Month: 1,350 ETB\n" +
-    "   • 3 Months: 3,600 ETB (Save 450 ETB)\n" +
-    "   • 1 Year: 12,000 ETB\n\n" +
-    "3. 🔄 FX Replay Pro\n" +
+    "   • 3 Months: 3,600 ETB\n\n" +
+    "5. 🔄 FX Replay Pro\n" +
     "   • 1 Month: 1,200 ETB\n" +
-    "   • 3 Months: 3,200 ETB (Save 400 ETB)\n\n" +
-    "4. 📓 Trading Journal\n" +
-    "   • Lifetime License: 850 ETB\n\n" +
-    "All TradingView packages include official real-time CME market feeds.",
+    "   • 3 Months: 3,200 ETB\n\n" +
+    "6. 📓 Abyssinia Journal\n" +
+    "   • Status: ✨ Coming Soon!",
     Markup.inlineKeyboard([
       [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
       [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
@@ -403,12 +444,12 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
 bot.action('ACTION_OFFERS', (ctx) => {
   ctx.reply(
     "🎁 Special Season Offers:\n\n" +
-    "🔥 TradingView VIP Annual Bundle\n" +
-    "Get TradingView Premium + CME Data for 1 Full Year with full warranty and priority support for only 16,500 ETB.\n\n" +
+    "🔥 TradingView Essential + CME Data\n" +
+    "Get full real-time CME market data with 3-month savings for only 3,600 ETB.\n\n" +
     "🔥 FX Replay 3-Month Pack\n" +
     "3 months of unlimited tick backtesting for 3,200 ETB (Save 400 ETB).\n\n" +
-    "🔥 Lifetime Trader Journal\n" +
-    "One-time payment of 850 ETB with lifetime cloud updates.",
+    "🔥 Abyssinia Journal Launch Special\n" +
+    "Coming soon with early bird lifetime pricing for our channel members!",
     Markup.inlineKeyboard([
       [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
       [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
@@ -432,7 +473,7 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
       "• Commission Balance: " + (count * 100) + " ETB\n\n" +
       "🔗 Your Unique Referral Link:\n" + refLink,
       Markup.inlineKeyboard([
-        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView Premium and FX Replay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
+        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView and FX Replay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
         [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
       ])
     );
@@ -472,7 +513,7 @@ bot.action('FAQ_PAYMENT', (ctx) => {
 bot.action('FAQ_OFFICIAL', (ctx) => {
   ctx.reply(
     "🔒 Is this an official subscription?\n\n" +
-    "Yes! All TradingView Premium, Essential, and FX Replay Pro accounts are 100% genuine, private, and backed by our full-term warranty guarantee.",
+    "Yes! All TradingView and FX Replay Pro accounts are 100% genuine, private, and backed by our full-term warranty guarantee.",
     Markup.inlineKeyboard([
       [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
       [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
@@ -628,7 +669,7 @@ bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
 // 💳 Payment Details Display (With Monospace Click-to-Copy)
 bot.action(/PAY_(.+)/, (ctx) => {
   const method = ctx.match[1];
-  const userSession = db.userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 1800 };
+  const userSession = db.userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 1350 };
   userSession.method = method;
 
   let payText = '';
@@ -636,13 +677,13 @@ bot.action(/PAY_(.+)/, (ctx) => {
     payText = "📱 *Telebirr Payment Details*\n\n" +
               "• Phone Number: `" + PAYMENT_INFO.telebirr.number + "` (Tap to copy)\n" +
               "• Account Name: `" + PAYMENT_INFO.telebirr.name + "`\n" +
-              "• Amount: `" + (userSession.finalPrice || 1800) + " ETB`\n\n" +
+              "• Amount: `" + (userSession.finalPrice || 1350) + " ETB`\n\n" +
               "⚠️ *Important:* After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
   } else {
     payText = "💎 *Binance Payment Details*\n\n" +
               "• Binance Pay ID: `" + PAYMENT_INFO.binance.id + "` (Tap to copy)\n" +
               "• Payee Name: `" + PAYMENT_INFO.binance.name + "`\n" +
-              "• Amount: `" + ((userSession.finalPrice || 1800) / 100).toFixed(1) + " USDT`\n\n" +
+              "• Amount: `" + ((userSession.finalPrice || 1350) / 100).toFixed(1) + " USDT`\n\n" +
               "⚠️ *Important:* After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
   }
 
@@ -654,7 +695,7 @@ bot.on('photo', async (ctx) => {
   try {
     const user = ctx.from;
     db.users.add(user.id);
-    const userSession = db.userSessions[user.id] || { tool: 'Trading Tool', method: 'Direct', finalPrice: 1800 };
+    const userSession = db.userSessions[user.id] || { tool: 'Trading Tool', method: 'Direct', finalPrice: 1350 };
     const photo = ctx.message.photo.pop();
 
     if (ADMIN_CHAT_ID) {
@@ -663,7 +704,7 @@ bot.on('photo', async (ctx) => {
                             "Customer: @" + (user.username || 'NoUsername') + "\n" +
                             "User ID: " + user.id + "\n" +
                             "Product: " + userSession.tool + "\n" +
-                            "Amount: " + (userSession.finalPrice || 1800) + " ETB\n" +
+                            "Amount: " + (userSession.finalPrice || 1350) + " ETB\n" +
                             "Method: " + userSession.method + "\n\n" +
                             "Copy & paste to deliver credentials:\n" +
                             "/send " + user.id + " Email: ... | Pass: ...";
@@ -728,7 +769,7 @@ bot.command('send', async (ctx) => {
     });
 
     db.ordersCount += 1;
-    db.totalRevenue += 1800;
+    db.totalRevenue += 1350;
     ctx.reply("Credentials delivered and recorded in Customer (ID: " + targetUserId + ") Orders Dashboard!");
   } catch (err) {
     ctx.reply("Delivery failed! Error: " + err.message);
@@ -744,7 +785,7 @@ bot.command('broadcast', async (ctx) => {
 
     const text = ctx.message.text.replace('/broadcast', '').trim();
     if (!text) {
-      return ctx.reply('Please include the broadcast text.\n\nExample:\n/broadcast Special flash deal on TradingView Premium + CME Data!');
+      return ctx.reply('Please include the broadcast text.\n\nExample:\n/broadcast Special flash deal on TradingView Essential + CME Data!');
     }
 
     const userList = Array.from(db.users);
