@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH PERSISTENT DISK STORAGE (JSON DB)
+// 24/7 PRODUCTION SCRIPT WITH PERSISTENT STORAGE & CLEAN HTML
 // ============================================================
 
 require('dotenv').config();
@@ -9,10 +9,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const BOT_TOKEN拼 = process.env.BOT_TOKEN;
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const ADMIN_CHAT_ID拼 = process.env.ADMIN_CHAT_ID;
-const ADMIN_CHAT_ID述 = process.env.ADMIN_CHAT_ID;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniatradinget";
 
@@ -28,12 +25,11 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
-const bot拼 = new Telegraf(BOT_TOKEN);
 const bot = new Telegraf(BOT_TOKEN);
 
 // 🛡️ ANTI-CRASH GLOBAL ERROR HANDLERS
 bot.catch((err, ctx) => {
-  console.error(`⚠️ Telegram Bot Error caught safely for update ${ctx ? ctx.updateType : 'unknown'}:`, err.message);
+  console.error(`⚠️ Telegram Bot Error caught safely:`, err.message);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -54,7 +50,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 function loadDatabase() {
   const defaultDb = {
     users: [],
-    userOrders: {},      // { userId: [ { id, tool, plan, status, activatedDate, expiresDate, credentials, price } ] }
+    userOrders: {},
     referrals: {},
     referrerOf: {},
     ordersCount: 0,
@@ -79,7 +75,7 @@ function loadDatabase() {
 }
 
 const db = loadDatabase();
-const userSessions = {}; // transient checkout state
+const userSessions = {}; // Transient session state for current checkout
 
 function saveDatabase() {
   try {
@@ -97,7 +93,7 @@ function saveDatabase() {
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('✅ A T T S Telegram Bot (@abyssiniatradingbot) is LIVE and HEALTHY 24/7!');
+  res.end('A T T S Telegram Bot is LIVE 24/7!');
 });
 
 server.listen(PORT, '0.0.0.0', () => {
@@ -235,8 +231,8 @@ async function checkAllChannelMemberships(ctx, userId) {
   const missing = [];
   for (const ch of REQUIRED_CHANNELS) {
     try {
-      const member逗 = await ctx.telegram.getChatMember(ch.username, userId);
-      const isMember = ['member', 'administrator', 'creator'].includes(member逗.status);
+      const member = await ctx.telegram.getChatMember(ch.username, userId);
+      const isMember = ['member', 'administrator', 'creator'].includes(member.status);
       if (!isMember) {
         missing.push(ch);
       }
@@ -256,46 +252,52 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   channelButtons.push([Markup.button.callback('✅ I Have Joined All Channels (Verify)', 'VERIFY_JOIN')]);
 
   return ctx.reply(
-    "⚠️ Access Required Before Using A T T S Bot!\n\n" +
+    "⚠️ <b>Access Required Before Using A T T S Bot!</b>\n\n" +
     "To access our premium trading tools, pricing catalogs, and instant orders, you must first join our official community channels:\n\n" +
     "1️⃣ @abyssiniatradinget (Official Channel)\n" +
     "2️⃣ @abyssiniachat (Trading Discussion Community)\n" +
     "3️⃣ @abyssiniattstore (Store & Updates)\n\n" +
     "👉 Click the buttons below to join each channel, then click Verify:",
-    Markup.inlineKeyboard(channelButtons)
+    { parse_mode: 'HTML', ...Markup.inlineKeyboard(channelButtons) }
   );
 }
 
 // 🏠 Main Menu Builder
 function sendMainMenu(ctx) {
   return ctx.reply(
-    "👋 Welcome to A T T S - Abyssinia Trading Tools Store!\n\n" +
+    "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
     "Your trusted source for genuine TradingView + CME market feeds, backtesting engines, and trading analytics in Ethiopia.\n\n" +
     "Select an option below to get started:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-      [Markup.button.callback('💳 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
-      [Markup.button.callback('🤝 Refferal', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help & FAQ', 'ACTION_FAQ')],
-      [Markup.button.url('💬 Support', 'https://t.me/' + SUPPORT_USERNAME)]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
+        [Markup.button.callback('💳 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
+        [Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help & FAQ', 'ACTION_FAQ')],
+        [Markup.button.url('💬 Support', 'https://t.me/' + SUPPORT_USERNAME)]
+      ])
+    }
   );
 }
 
 // ❓ FAQ Menu Builder
 function sendFAQMenu(ctx) {
   return ctx.reply(
-    "❓ FREQUENTLY ASKED QUESTIONS (FAQ)\n\n" +
+    "❓ <b>FREQUENTLY ASKED QUESTIONS (FAQ)</b>\n\n" +
     "Click any question below for quick answers or contact our 24/7 support team:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('⏱️ How Long Does Delivery Take?', 'FAQ_DELIVERY')],
-      [Markup.button.callback('💳 How Do I Pay?', 'FAQ_PAYMENT')],
-      [Markup.button.callback('🔒 Is This An Official Subscription?', 'FAQ_OFFICIAL')],
-      [Markup.button.callback('🔄 Can I Change My Account?', 'FAQ_CHANGE_ACC')],
-      [Markup.button.callback('⏰ What Happens When My Subscription Expires?', 'FAQ_EXPIRY')],
-      [Markup.button.callback('🛠️ What If I Have A Problem?', 'FAQ_PROBLEM')],
-      [Markup.button.callback('📞 How Do I Contact Support?', 'FAQ_SUPPORT')],
-      [Markup.button.callback('🔙 Back To Main Menu', 'ACTION_MAIN_MENU')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('⏱️ How Long Does Delivery Take?', 'FAQ_DELIVERY')],
+        [Markup.button.callback('💳 How Do I Pay?', 'FAQ_PAYMENT')],
+        [Markup.button.callback('🔒 Is This An Official Subscription?', 'FAQ_OFFICIAL')],
+        [Markup.button.callback('🔄 Can I Change My Account?', 'FAQ_CHANGE_ACC')],
+        [Markup.button.callback('⏰ What Happens When My Subscription Expires?', 'FAQ_EXPIRY')],
+        [Markup.button.callback('🛠️ What If I Have A Problem?', 'FAQ_PROBLEM')],
+        [Markup.button.callback('📞 How Do I Contact Support?', 'FAQ_SUPPORT')],
+        [Markup.button.callback('🔙 Back To Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
   );
 }
 
@@ -316,7 +318,8 @@ bot.start(async (ctx) => {
         try {
           await bot.telegram.sendMessage(
             referrerId,
-            "🎉 New trader joined via your referral link!\n\nUser: @" + (ctx.from.username || 'Trader') + "\nYou will receive a 100 ETB bonus upon their first purchase!"
+            "🎉 <b>New trader joined via your referral link!</b>\n\nUser: @" + (ctx.from.username || 'Trader') + "\nYou will receive a 100 ETB bonus upon their first purchase!",
+            { parse_mode: 'HTML' }
           );
         } catch (e) {}
       }
@@ -340,7 +343,7 @@ bot.action('VERIFY_JOIN', async (ctx) => {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
     if (allJoined) {
       try { await ctx.deleteMessage(); } catch (e) {}
-      ctx.reply("🎉 Verification Successful! Thank you for joining our community.");
+      ctx.reply("🎉 <b>Verification Successful!</b> Thank you for joining our community.", { parse_mode: 'HTML' });
       return sendMainMenu(ctx);
     } else {
       const remaining = missing.map(m => m.username).join(', ');
@@ -358,17 +361,20 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
     if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
     ctx.reply(
-      "🛍️ **A T T S Product Shop**\n\n" +
+      "🛍️ <b>A T T S Product Shop</b>\n\n" +
       "Select a product below to view specifications, available plans, and instant pricing:",
-      Markup.inlineKeyboard([
-        [Markup.button.callback('📊 TradingView Premium', 'VIEW_tvprem_pure')],
-        [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
-        [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
-        [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
-        [Markup.button.callback('🔄 Fxreplay Pro', 'VIEW_fxr')],
-        [Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')],
-        [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
-      ])
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('📊 TradingView Premium', 'VIEW_tvprem_pure')],
+          [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
+          [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
+          [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
+          [Markup.button.callback('🔄 Fxreplay Pro', 'VIEW_fxr')],
+          [Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')],
+          [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+        ])
+      }
     );
   } catch (err) {
     console.error("Error in shop action:", err);
@@ -378,15 +384,18 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
 // Abyssinia Journal - Coming Soon Handler
 bot.action('VIEW_abyssinia_journal', (ctx) => {
   ctx.reply(
-    "📓 **Abyssinia Journal**\n\n" +
-    "✨ *Coming soon!*\n\n" +
+    "📓 <b>Abyssinia Journal</b>\n\n" +
+    "✨ <i>Coming soon!</i>\n\n" +
     "Our proprietary automated trade journaling, risk management, and equity curve tracking system is currently in final testing.\n\n" +
     "📢 Stay tuned and keep updated on our official channel @abyssiniatradinget for the launch date!",
-    Markup.inlineKeyboard([
-      [Markup.button.url('📢 Follow Updates in Channel', 'https://t.me/abyssiniatradinget')],
-      [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
-      [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.url('📢 Follow Updates in Channel', 'https://t.me/abyssiniatradinget')],
+        [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
+        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
   );
 });
 
@@ -406,41 +415,44 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
     // Out of Stock Handling
     if (product.outOfStock) {
       return ctx.reply(
-        `${product.title}\n\n` +
-        "🚫 **STATUS: OUT OF STOCK**\n\n" +
+        `<b>${product.title}</b>\n\n` +
+        "🚫 <b>STATUS: OUT OF STOCK</b>\n\n" +
         "We are currently restocking this subscription package. Subscription slots will be available soon!\n\n" +
-        "📢 **Keep updated on our official channel @abyssiniatradinget for instant restock announcements!**",
-        Markup.inlineKeyboard([
-          [Markup.button.url('📢 Go To Official Channel', 'https://t.me/abyssiniatradinget')],
-          [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
-          [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
-        ])
+        "📢 Keep updated on our official channel @abyssiniatradinget for instant restock announcements!",
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url('📢 Go To Official Channel', 'https://t.me/abyssiniatradinget')],
+            [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
+            [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+          ])
+        }
       );
     }
 
-    // Special Hierarchical Tier Menu for Fxreplay Pro
+    // Hierarchical Tier Menu for Fxreplay Pro
     if (prodKey === 'fxr') {
-      let descText = `${product.title}\n` +
+      let descText = `<b>${product.title}</b>\n` +
                      `${product.tagline}\n\n` +
-                     `✨ **Key Features:**\n` +
+                     `✨ <b>Key Features:</b>\n` +
                      product.features.map(f => `• ${f}`).join('\n') +
-                     `\n\n👇 **Choose your subscription plan:**`;
+                     `\n\n👇 <b>Choose your subscription plan:</b>`;
 
-      const tierButtons述 = [
+      const tierButtons = [
         [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
         [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
         [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
         [Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ];
-      return ctx.reply(descText, Markup.inlineKeyboard(tierButtons述));
+      return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
     }
 
     // Standard Plans Display for TradingView Essential
-    let descText = product.title + "\n" +
-                   product.tagline + "\n\n" +
-                   "✨ Key Features:\n" +
-                   product.features.map(f => "• " + f).join("\n") +
-                   "\n\n💳 Available Subscription Plans:\n";
+    let descText = `<b>${product.title}</b>\n` +
+                   `${product.tagline}\n\n` +
+                   `✨ <b>Key Features:</b>\n` +
+                   product.features.map(f => `• ${f}`).join('\n') +
+                   `\n\n💳 <b>Available Subscription Plans:</b>\n`;
 
     const planButtons = Object.keys(product.plans).map(planCode => {
       const plan = product.plans[planCode];
@@ -454,7 +466,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
       Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
     ]);
 
-    ctx.reply(descText, Markup.inlineKeyboard(planButtons));
+    ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(planButtons) });
   } catch (err) {
     console.error("Error in view product:", err);
   }
@@ -467,7 +479,7 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
     const product = PRODUCTS_CATALOG['fxr'];
     const tier = product.tiers[tierKey];
 
-    let descText = `🔄 **Fxreplay Pro — ${tier.name}**\n\n` +
+    let descText = `🔄 <b>Fxreplay Pro — ${tier.name}</b>\n\n` +
                    `Please select the package configuration you want:`;
 
     const optionButtons = tier.options.map(opt => [
@@ -479,7 +491,7 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
       Markup.button.callback('🛍️ Shop', 'ACTION_SHOP')
     ]);
 
-    ctx.reply(descText, Markup.inlineKeyboard(optionButtons));
+    ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(optionButtons) });
   } catch (err) {
     console.error("Error in fxr tier action:", err);
   }
@@ -488,16 +500,15 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
 // Fxreplay Pro Option Selected -> Order Summary & Payment
 bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
   try {
-    const optCode述 = ctx.match[1];
+    const optCode = ctx.match[1];
     const product = PRODUCTS_CATALOG['fxr'];
     let selectedOpt = null;
     let selectedTierName = "";
 
     for (const tKey in product.tiers) {
-      const match = product.tiers[tKey].options.find(o => o.code === optCode述);
+      const match = product.tiers[tKey].options.find(o => o.code === optCode);
       if (match) {
         selectedOpt = match;
-        selectedTierName逗 = product.tiers[tKey].name;
         selectedTierName = product.tiers[tKey].name;
         break;
       }
@@ -509,24 +520,27 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
 
     userSessions[ctx.from.id] = {
       productId: 'fxr',
-      planKey: optCode述,
+      planKey: optCode,
       tool: `Fxreplay Pro - ${selectedOpt.name}`,
       planTitle: selectedTierName,
       finalPrice: selectedOpt.price
     };
 
     ctx.reply(
-      "🧾 **Order Summary:**\n\n" +
-      "📦 **Product:** Fxreplay Pro\n" +
-      `📁 **Plan:** ${selectedTierName}\n` +
-      `✨ **Package:** ${selectedOpt.name}\n` +
-      `💰 **Total Payable:** ${selectedOpt.price} ETB\n\n` +
+      "🧾 <b>Order Summary:</b>\n\n" +
+      "📦 <b>Product:</b> Fxreplay Pro\n" +
+      `📁 <b>Plan:</b> ${selectedTierName}\n` +
+      `✨ <b>Package:</b> ${selectedOpt.name}\n` +
+      `💰 <b>Total Payable:</b> ${selectedOpt.price} ETB\n\n` +
       "Please choose your preferred payment method below:",
-      Markup.inlineKeyboard([
-        [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-        [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
-        [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr')]
-      ])
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
+          [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
+          [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr')]
+        ])
+      }
     );
   } catch (err) {
     console.error("Error in fxr opt action:", err);
@@ -555,16 +569,19 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
     };
 
     ctx.reply(
-      "🧾 Order Summary:\n\n" +
-      "📦 Product: " + product.title + "\n" +
-      "⏱️ Plan: " + plan.name + "\n" +
-      "💰 Total Payable: " + plan.price + " ETB\n\n" +
+      "🧾 <b>Order Summary:</b>\n\n" +
+      "📦 <b>Product:</b> " + product.title + "\n" +
+      "⏱️ <b>Plan:</b> " + plan.name + "\n" +
+      "💰 <b>Total Payable:</b> " + plan.price + " ETB\n\n" +
       "Please choose your preferred payment method below:",
-      Markup.inlineKeyboard([
-        [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-        [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
-        [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
-      ])
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
+          [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
+          [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
+        ])
+      }
     );
   } catch (err) {
     console.error("Error in plan select:", err);
@@ -574,44 +591,50 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
 // 💳 3. PRICING OVERVIEW
 bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   ctx.reply(
-    "💳 Official Pricing Overview:\n\n" +
-    "1. 📊 TradingView Premium\n" +
+    "💳 <b>Official Pricing Overview:</b>\n\n" +
+    "1. 📊 <b>TradingView Premium</b>\n" +
     "   • Status: 🚫 Out of Stock (Check @abyssiniatradinget)\n\n" +
-    "2. 📊 TradingView Premium + CME Data\n" +
+    "2. 📊 <b>TradingView Premium + CME Data</b>\n" +
     "   • Status: 🚫 Out of Stock (Check @abyssiniatradinget)\n\n" +
-    "3. 📈 TradingView Essential\n" +
+    "3. 📈 <b>TradingView Essential</b>\n" +
     "   • 1 Month: 1,100 ETB\n" +
     "   • 3 Months: 2,950 ETB\n\n" +
-    "4. 📈 TradingView Essential + CME Data\n" +
+    "4. 📈 <b>TradingView Essential + CME Data</b>\n" +
     "   • 1 Month: 1,350 ETB\n" +
     "   • 3 Months: 3,600 ETB\n\n" +
-    "5. 🔄 Fxreplay Pro\n" +
+    "5. 🔄 <b>Fxreplay Pro</b>\n" +
     "   • Monthly Plans: From 750 ETB\n" +
     "   • Two Weeks Plans: From 550 ETB\n" +
     "   • Weekly Plans: From 250 ETB\n\n" +
-    "6. 📓 Abyssinia Journal\n" +
+    "6. 📓 <b>Abyssinia Journal</b>\n" +
     "   • Status: ✨ Coming Soon!",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
-      [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+        [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
   );
 });
 
 // 🎁 4. SPECIAL OFFERS VIEW
 bot.action('ACTION_OFFERS', (ctx) => {
   ctx.reply(
-    "🎁 Special Season Offers:\n\n" +
-    "🔥 TradingView Essential + CME Data\n" +
+    "🎁 <b>Special Season Offers:</b>\n\n" +
+    "🔥 <b>TradingView Essential + CME Data</b>\n" +
     "Get full real-time CME market data with 3-month savings for only 3,600 ETB.\n\n" +
-    "🔥 Fxreplay Pro Multi-Timeframe Packs\n" +
+    "🔥 <b>Fxreplay Pro Multi-Timeframe Packs</b>\n" +
     "Get full backtesting access with weekly, 2-week, or monthly plans starting at just 250 ETB.\n\n" +
-    "🔥 Abyssinia Journal Launch Special\n" +
+    "🔥 <b>Abyssinia Journal Launch Special</b>\n" +
     "Coming soon with early bird lifetime pricing for our channel members!",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
-      [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+        [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
   );
 });
 
@@ -624,16 +647,19 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
     const count = (db.referrals[userId] || []).length;
 
     ctx.reply(
-      "🤝 Partner & Referral Program (Invite & Earn):\n\n" +
+      "🤝 <b>Partner & Referral Program (Invite & Earn):</b>\n\n" +
       "Invite fellow traders and earn 100 ETB Commission for every purchase they make!\n\n" +
-      "📊 Your Performance:\n" +
+      "📊 <b>Your Performance:</b>\n" +
       "• Traders Invited: " + count + " people\n" +
       "• Commission Balance: " + (count * 100) + " ETB\n\n" +
-      "🔗 Your Unique Referral Link:\n" + refLink,
-      Markup.inlineKeyboard([
-        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView and Fxreplay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
-        [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
-      ])
+      "🔗 <b>Your Unique Referral Link:</b>\n" + refLink,
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView and Fxreplay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
+          [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+        ])
+      }
     );
   } catch (err) {
     console.error("Error in referral action:", err);
@@ -645,86 +671,107 @@ bot.action('ACTION_FAQ', (ctx) => sendFAQMenu(ctx));
 
 bot.action('FAQ_DELIVERY', (ctx) => {
   ctx.reply(
-    "⏱️ How long does delivery take?\n\n" +
+    "⏱️ <b>How long does delivery take?</b>\n\n" +
     "Orders are processed rapidly within 5 to 15 minutes after uploading your payment screenshot. Our team verifies your transaction and sends your private login credentials right here in this bot!",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-      [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
+      ])
+    }
   );
 });
 
 bot.action('FAQ_PAYMENT', (ctx) => {
   ctx.reply(
-    "💳 How do I pay?\n\n" +
+    "💳 <b>How do I pay?</b>\n\n" +
     "We accept two convenient payment methods:\n" +
     "1. Telebirr (Instant Mobile Money)\n" +
     "2. Binance Pay for crypto & USDT.\n\n" +
     "Account details and copyable numbers will be shown automatically during checkout.",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-      [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
+      ])
+    }
   );
 });
 
 bot.action('FAQ_OFFICIAL', (ctx) => {
   ctx.reply(
-    "🔒 Is this an official subscription?\n\n" +
+    "🔒 <b>Is this an official subscription?</b>\n\n" +
     "Yes! All TradingView and Fxreplay Pro accounts are 100% genuine, private, and backed by our full-term warranty guarantee.",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-      [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
+      ])
+    }
   );
 });
 
 bot.action('FAQ_CHANGE_ACC', (ctx) => {
   ctx.reply(
-    "🔄 Can I change my account?\n\n" +
+    "🔄 <b>Can I change my account?</b>\n\n" +
     "Yes, if you need customized email credentials or want your subscription linked to a specific setup, simply notify our support team right after ordering.",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-      [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
+        [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
+      ])
+    }
   );
 });
 
 bot.action('FAQ_EXPIRY', (ctx) => {
   ctx.reply(
-    "⏰ What happens when my subscription expires?\n\n" +
+    "⏰ <b>What happens when my subscription expires?</b>\n\n" +
     "You will receive an automated 1-click renewal reminder 3 days prior to expiration so your charting or backtesting setups never get interrupted.",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-      [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
+      ])
+    }
   );
 });
 
 bot.action('FAQ_PROBLEM', (ctx) => {
   ctx.reply(
-    "🛠️ What if I have a problem?\n\n" +
+    "🛠️ <b>What if I have a problem?</b>\n\n" +
     "We offer 24/7 dedicated customer assistance. If you ever experience an issue with login, bar replay, or CME data, we resolve or replace it within minutes!",
-    Markup.inlineKeyboard([
-      [Markup.button.url('💬 Talk To Support', 'https://t.me/' + SUPPORT_USERNAME)],
-      [Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.url('💬 Talk To Support', 'https://t.me/' + SUPPORT_USERNAME)],
+        [Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]
+      ])
+    }
   );
 });
 
 bot.action('FAQ_SUPPORT', (ctx) => {
   ctx.reply(
-    "📞 How do I contact support?\n\n" +
+    "📞 <b>How do I contact support?</b>\n\n" +
     "You can reach our official administration team directly via Telegram:\n" +
     "👉 @" + SUPPORT_USERNAME + " (24/7 Fast Response)",
-    Markup.inlineKeyboard([
-      [Markup.button.url('💬 Open Support Chat', 'https://t.me/' + SUPPORT_USERNAME)],
-      [Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.url('💬 Open Support Chat', 'https://t.me/' + SUPPORT_USERNAME)],
+        [Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]
+      ])
+    }
   );
 });
 
-// 👥 7. MY ORDERS DASHBOARD (Fully Persistent)
+// 👥 7. MY ORDERS DASHBOARD (Clean, Persistent & Professional)
 bot.action('ACTION_MY_ORDERS', (ctx) => {
   const userId = ctx.from.id;
   const orders = db.userOrders[userId] || [];
@@ -732,53 +779,59 @@ bot.action('ACTION_MY_ORDERS', (ctx) => {
   const pendingOrders = orders.filter(o => o.status === 'Pending');
 
   ctx.reply(
-    "👥 **My Orders Dashboard**\n\n" +
-    "📦 **Overview:**\n" +
-    `• Active Subscriptions: **${activeOrders.length}**\n` +
-    `• Pending Verification: **${pendingOrders.length}**\n` +
-    `• Total History: **${orders.length} orders**\n\n` +
+    "👥 <b>My Orders Dashboard</b>\n\n" +
+    "📦 <b>Overview:</b>\n" +
+    `• Active Subscriptions: <b>${activeOrders.length}</b>\n` +
+    `• Pending Verification: <b>${pendingOrders.length}</b>\n` +
+    `• Total History: <b>${orders.length} orders</b>\n\n` +
     "Select an option below to view details:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('📦 Active Orders', 'MY_ORDERS_ACTIVE')],
-      [Markup.button.callback('🕐 Order History', 'MY_ORDERS_HISTORY')],
-      [Markup.button.callback('🔑 My Access', 'MY_ORDERS_KEYS')],
-      [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
-    ])
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📦 Active Orders', 'MY_ORDERS_ACTIVE')],
+        [Markup.button.callback('🕐 Order History', 'MY_ORDERS_HISTORY')],
+        [Markup.button.callback('🔑 My Access', 'MY_ORDERS_KEYS')],
+        [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
+      ])
+    }
   );
 });
 
 bot.action('MY_ORDERS_ACTIVE', (ctx) => {
-  const userId拼 = ctx.from.id;
-  const orders = db.userOrders[userId拼] || [];
+  const userId = ctx.from.id;
+  const orders = db.userOrders[userId] || [];
   const activeOrders = orders.filter(o => o.status === 'Active');
   const pendingOrders = orders.filter(o => o.status === 'Pending');
 
   if (activeOrders.length === 0 && pendingOrders.length === 0) {
     return ctx.reply(
-      "📦 **Active Orders:**\n\nYou do not have any active or pending subscriptions right now.\n\nReady to upgrade your trading?",
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
-        [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-      ])
+      "📦 <b>Active Orders:</b>\n\nYou do not have any active or pending subscriptions right now.\n\nReady to upgrade your trading?",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+          [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
+        ])
+      }
     );
   }
 
-  let responseText = "📦 **YOUR SUBSCRIPTIONS:**\n\n";
+  let responseText = "📦 <b>YOUR SUBSCRIPTIONS:</b>\n\n";
   
   if (activeOrders.length > 0) {
-    responseText += "🟢 **ACTIVE SUBSCRIPTIONS:**\n";
+    responseText += "🟢 <b>ACTIVE SUBSCRIPTIONS:</b>\n";
     activeOrders.forEach((ord, i) => {
-      responseText += `**${i + 1}. ${ord.tool}**\n` +
-                      `• Status: 🟢 ${ord.status}\n` +
+      responseText += `<b>${i + 1}. ${ord.tool}</b>\n` +
+                      `• Status: 🟢 Active\n` +
                       `• Activated: ${ord.activatedDate}\n` +
                       `• Expires: ${ord.expiresDate}\n\n`;
     });
   }
 
   if (pendingOrders.length > 0) {
-    responseText += "🟡 **PENDING VERIFICATION:**\n";
+    responseText += "🟡 <b>PENDING VERIFICATION:</b>\n";
     pendingOrders.forEach((ord, i) => {
-      responseText += `**${i + 1}. ${ord.tool}**\n` +
+      responseText += `<b>${i + 1}. ${ord.tool}</b>\n` +
                       `• Status: 🟡 Awaiting Admin Approval\n` +
                       `• Submitted: ${ord.activatedDate}\n` +
                       `• Amount: ${ord.price || 'Paid'}\n\n`;
@@ -787,10 +840,13 @@ bot.action('MY_ORDERS_ACTIVE', (ctx) => {
 
   responseText += "Need help? Contact @" + SUPPORT_USERNAME;
 
-  ctx.reply(responseText, Markup.inlineKeyboard([
-    [Markup.button.callback('🔑 My Access', 'MY_ORDERS_KEYS')],
-    [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-  ]));
+  ctx.reply(responseText, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('🔑 My Access', 'MY_ORDERS_KEYS')],
+      [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
+    ])
+  });
 });
 
 bot.action('MY_ORDERS_HISTORY', (ctx) => {
@@ -799,23 +855,29 @@ bot.action('MY_ORDERS_HISTORY', (ctx) => {
 
   if (orders.length === 0) {
     return ctx.reply(
-      "🕐 **Order History:**\n\nNo previous order records found under your account.",
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop First Product', 'ACTION_SHOP')],
-        [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-      ])
+      "🕐 <b>Order History:</b>\n\nNo previous order records found under your account.",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🛍️ Shop First Product', 'ACTION_SHOP')],
+          [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
+        ])
+      }
     );
   }
 
-  let responseText = "🕐 **YOUR ORDER HISTORY:**\n\n";
+  let responseText = "🕐 <b>YOUR ORDER HISTORY:</b>\n\n";
   orders.forEach((ord, idx) => {
     const icon = ord.status === 'Active' ? '🟢' : (ord.status === 'Pending' ? '🟡' : '⚪');
     responseText += `#${ord.id || (1000 + idx + 1)} - ${ord.tool} (${icon} ${ord.status}) on ${ord.activatedDate}\n`;
   });
 
-  ctx.reply(responseText, Markup.inlineKeyboard([
-    [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-  ]));
+  ctx.reply(responseText, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
+    ])
+  });
 });
 
 bot.action('MY_ORDERS_KEYS', (ctx) => {
@@ -824,22 +886,25 @@ bot.action('MY_ORDERS_KEYS', (ctx) => {
 
   if (orders.length === 0) {
     return ctx.reply(
-      "🔑 **My Access:**\n\nNo active credentials available yet. Once your payment receipt is approved, your access keys will appear right here.",
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
-        [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-      ])
+      "🔑 <b>My Access:</b>\n\nNo active credentials available yet. Once your payment receipt is approved, your access keys will appear right here.",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+          [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
+        ])
+      }
     );
   }
 
-  let responseText = "🔑 **YOUR DELIVERED ACCESS CREDENTIALS:**\n\n";
+  let responseText = "🔑 <b>YOUR DELIVERED ACCESS CREDENTIALS:</b>\n\n";
   orders.forEach((ord, idx) => {
-    responseText += `**${idx + 1}. ${ord.tool}** (Expires: ${ord.expiresDate}):\n` +
-                    `\`${ord.credentials}\`\n\n`;
+    responseText += `<b>${idx + 1}. ${ord.tool}</b> (Expires: ${ord.expiresDate}):\n` +
+                    `<code>${ord.credentials}</code>\n\n`;
   });
 
   ctx.reply(responseText, {
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
       [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)],
       [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
@@ -857,21 +922,20 @@ bot.action(/PAY_(.+)/, (ctx) => {
 
   let payText = '';
   if (method === 'TELEBIRR') {
-    payText拼 = "📱 *Telebirr Payment Details*\n\n" +
-              "• Phone Number: `" + PAYMENT_INFO.telebirr.number + "` (Tap to copy)\n" +
-              "• Account Name: `" + PAYMENT_INFO.telebirr.name + "`\n" +
-              "• Amount: `" + (session.finalPrice || 750) + " ETB`\n\n" +
-              "⚠️ *Important:* After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
-    payText = payText拼;
+    payText = "📱 <b>Telebirr Payment Details</b>\n\n" +
+              "• Phone Number: <code>" + PAYMENT_INFO.telebirr.number + "</code> (Tap to copy)\n" +
+              "• Account Name: <code>" + PAYMENT_INFO.telebirr.name + "</code>\n" +
+              "• Amount: <code>" + (session.finalPrice || 750) + " ETB</code>\n\n" +
+              "⚠️ <b>Important:</b> After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
   } else {
-    payText = "💎 *Binance Payment Details*\n\n" +
-              "• Binance Pay ID: `" + PAYMENT_INFO.binance.id + "` (Tap to copy)\n" +
-              "• Payee Name: `" + PAYMENT_INFO.binance.name + "`\n" +
-              "• Amount: `" + ((session.finalPrice || 750) / 100).toFixed(1) + " USDT`\n\n" +
-              "⚠️ *Important:* After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
+    payText = "💎 <b>Binance Payment Details</b>\n\n" +
+              "• Binance Pay ID: <code>" + PAYMENT_INFO.binance.id + "</code> (Tap to copy)\n" +
+              "• Payee Name: <code>" + PAYMENT_INFO.binance.name + "</code>\n" +
+              "• Amount: <code>" + ((session.finalPrice || 750) / 100).toFixed(1) + " USDT</code>\n\n" +
+              "⚠️ <b>Important:</b> After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
   }
 
-  ctx.reply(payText, { parse_mode: 'Markdown' });
+  ctx.reply(payText, { parse_mode: 'HTML' });
 });
 
 // Customer Uploads Receipt Photo -> Automatically registers Pending Order
@@ -902,17 +966,18 @@ bot.on('photo', async (ctx) => {
 
     if (ADMIN_CHAT_ID) {
       try {
-        const captionText = "🚨 **NEW PAYMENT RECEIPT RECEIVED!**\n\n" +
+        const captionText = "🚨 <b>NEW PAYMENT RECEIPT RECEIVED!</b>\n\n" +
                             "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
-                            "🆔 User ID: " + user.id + "\n" +
-                            "📦 Product: " + session.tool + "\n" +
-                            "💰 Amount: " + (session.finalPrice || 750) + " ETB\n" +
+                            "🆔 User ID: <code>" + user.id + "</code>\n" +
+                            "📦 Product: <b>" + session.tool + "</b>\n" +
+                            "💰 Amount: <b>" + (session.finalPrice || 750) + " ETB</b>\n" +
                             "💳 Method: " + (session.method || 'Direct') + "\n\n" +
                             "💡 To approve and send access keys, run:\n" +
-                            "/send " + user.id + " Email: ... | Pass: ...";
+                            "<code>/send " + user.id + " Email: ... | Pass: ...</code>";
 
         await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
           caption: captionText,
+          parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [Markup.button.callback("Reject Receipt (" + user.id + ")", "REJECT_" + user.id)]
           ])
@@ -923,9 +988,10 @@ bot.on('photo', async (ctx) => {
     }
 
     ctx.reply(
-      "⏳ **Receipt Received & Recorded!**\n\n" +
-      "Your order has been saved under **👥 My Orders** with status `🟡 Pending Verification`.\n\n" +
-      "Our team is verifying the payment. Your login credentials will be delivered here within 5–15 minutes."
+      "⏳ <b>Receipt Received & Recorded!</b>\n\n" +
+      "Your order has been saved under <b>👥 My Orders</b> with status 🟡 <b>Pending Verification</b>.\n\n" +
+      "Our team is verifying the payment. Your login credentials will be delivered here within 5–15 minutes.",
+      { parse_mode: 'HTML' }
     );
   } catch (err) {
     console.error("Error handling photo upload:", err);
@@ -953,13 +1019,15 @@ bot.command('send', async (ctx) => {
     const exp = new Date();
     exp.setDate(now.getDate() + 30);
 
-    const deliveryNotification = "🎉 **CONGRATULATIONS! YOUR ORDER IS APPROVED & ACTIVE!**\n\n" +
-                                 "🔑 **Your Access Credentials:**\n\n" +
-                                 `\`${customMessage}\`\n\n` +
-                                 "👉 You can always view your credentials anytime under **👥 My Orders > 🔑 My Access** in the bot!\n\n" +
+    const deliveryNotification = "🎉 <b>CONGRATULATIONS! YOUR ORDER IS APPROVED & ACTIVE!</b>\n\n" +
+                                 "🔑 <b>Your Access Credentials:</b>\n\n" +
+                                 `<code>${customMessage}</code>\n\n` +
+                                 "📅 <b>Activation Date:</b> " + now.toLocaleDateString() + "\n" +
+                                 "⏳ <b>Expiration Date:</b> " + exp.toLocaleDateString() + "\n\n" +
+                                 "👉 You can always view your credentials anytime under <b>👥 My Orders > 🔑 My Access</b> in the bot!\n\n" +
                                  "Need assistance? Contact @" + SUPPORT_USERNAME + ". Happy Trading!";
 
-    await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'Markdown' });
+    await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
 
     // Update existing pending order or create new active order in persistent database
     if (!db.userOrders[targetUserId]) db.userOrders[targetUserId] = [];
@@ -967,7 +1035,6 @@ bot.command('send', async (ctx) => {
     const pendingIdx = db.userOrders[targetUserId].findIndex(o => o.status === 'Pending');
     if (pendingIdx !== -1) {
       db.userOrders[targetUserId][pendingIdx].status = 'Active';
-      db.userOrders[targetUserId][pendingIdx].activatedDate述 = now.toLocaleDateString();
       db.userOrders[targetUserId][pendingIdx].activatedDate = now.toLocaleDateString();
       db.userOrders[targetUserId][pendingIdx].expiresDate = exp.toLocaleDateString();
       db.userOrders[targetUserId][pendingIdx].credentials = customMessage;
@@ -1014,7 +1081,7 @@ bot.command('broadcast', async (ctx) => {
 
     for (const uid of userList) {
       try {
-        await bot.telegram.sendMessage(uid, "Announcement from A T T S:\n\n" + text);
+        await bot.telegram.sendMessage(uid, "📢 <b>Announcement from A T T S:</b>\n\n" + text, { parse_mode: 'HTML' });
         successCount++;
       } catch (e) {}
     }
@@ -1036,27 +1103,33 @@ bot.command('stats', (ctx) => {
   const totalRevenue = db.totalRevenue || 0;
 
   ctx.reply(
-    "📊 **A T T S BUSINESS ANALYTICS DASHBOARD:**\n\n" +
-    "👥 **Total Registered Traders:** " + totalUsers + " users\n" +
-    "📦 **Total Completed Orders:** " + totalOrders + " orders\n" +
-    "💰 **Total Recorded Revenue:** " + totalRevenue.toLocaleString() + " ETB\n" +
-    "⚡ **Database:** Disk JSON Persistent Storage Active",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
-    ])
+    "📊 <b>A T T S BUSINESS ANALYTICS DASHBOARD:</b>\n\n" +
+    "👥 <b>Total Registered Traders:</b> " + totalUsers + " users\n" +
+    "📦 <b>Total Completed Orders:</b> " + totalOrders + " orders\n" +
+    "💰 <b>Total Recorded Revenue:</b> " + totalRevenue.toLocaleString() + " ETB\n" +
+    "⚡ <b>Database:</b> Disk JSON Persistent Storage Active",
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
+      ])
+    }
   );
 });
 
 bot.action('REFRESH_STATS', (ctx) => {
   if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return;
   ctx.editMessageText(
-    "📊 **A T T S BUSINESS ANALYTICS (Live Update):**\n\n" +
-    "👥 **Total Traders:** " + db.users.size + " users\n" +
-    "📦 **Completed Orders:** " + (db.ordersCount || 0) + "\n" +
-    "💰 **Revenue:** " + (db.totalRevenue || 0).toLocaleString() + " ETB",
-    Markup.inlineKeyboard([
-      [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
-    ])
+    "📊 <b>A T T S BUSINESS ANALYTICS (Live Update):</b>\n\n" +
+    "👥 <b>Total Traders:</b> " + db.users.size + " users\n" +
+    "📦 <b>Completed Orders:</b> " + (db.ordersCount || 0) + "\n" +
+    "💰 <b>Revenue:</b> " + (db.totalRevenue || 0).toLocaleString() + " ETB",
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
+      ])
+    }
   );
 });
 
@@ -1074,7 +1147,8 @@ bot.action(/REJECT_(\d+)/, async (ctx) => {
 
     await bot.telegram.sendMessage(
       targetUserId,
-      "Payment Verification Unsuccessful.\n\nWe could not confirm the uploaded transaction receipt. Please ensure you sent the correct screenshot or contact support at @" + SUPPORT_USERNAME
+      "❌ <b>Payment Verification Unsuccessful</b>\n\nWe could not confirm the uploaded transaction receipt. Please ensure you sent the correct screenshot or contact support at @" + SUPPORT_USERNAME,
+      { parse_mode: 'HTML' }
     );
     ctx.editMessageCaption((ctx.update.callback_query.message.caption || '') + '\n\nSTATUS: REJECTED');
   } catch (err) {
@@ -1086,7 +1160,7 @@ bot.action(/REJECT_(\d+)/, async (ctx) => {
 async function startBotWithRetry() {
   try {
     await bot.launch();
-    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7 with Disk Database!');
+    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7 with Clean HTML Formatting!');
   } catch (err) {
     console.error('Bot launch error, retrying in 5 seconds...', err.message);
     setTimeout(startBotWithRetry, 5000);
