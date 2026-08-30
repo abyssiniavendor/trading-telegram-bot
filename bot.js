@@ -1,13 +1,18 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 CRASH-PROOF & AUTO-RECONNECT PRODUCTION SCRIPT
+// 24/7 PRODUCTION SCRIPT WITH PERSISTENT DISK STORAGE (JSON DB)
 // ============================================================
 
 require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
+const BOT_TOKEN拼 = process.env.BOT_TOKEN;
 const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_CHAT_ID拼 = process.env.ADMIN_CHAT_ID;
+const ADMIN_CHAT_ID述 = process.env.ADMIN_CHAT_ID;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniatradinget";
 
@@ -23,11 +28,12 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
+const bot拼 = new Telegraf(BOT_TOKEN);
 const bot = new Telegraf(BOT_TOKEN);
 
 // 🛡️ ANTI-CRASH GLOBAL ERROR HANDLERS
 bot.catch((err, ctx) => {
-  console.error(`⚠️ Telegram Bot Error caught safely for update ${ctx.updateType}:`, err.message);
+  console.error(`⚠️ Telegram Bot Error caught safely for update ${ctx ? ctx.updateType : 'unknown'}:`, err.message);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -37,6 +43,55 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (err) => {
   console.error('⚠️ Uncaught Exception caught safely:', err.message);
 });
+
+// 📁 PERSISTENT FILE DATABASE (Saves orders permanently on disk)
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
+}
+const DB_FILE = path.join(DATA_DIR, 'db.json');
+
+function loadDatabase() {
+  const defaultDb = {
+    users: [],
+    userOrders: {},      // { userId: [ { id, tool, plan, status, activatedDate, expiresDate, credentials, price } ] }
+    referrals: {},
+    referrerOf: {},
+    ordersCount: 0,
+    totalRevenue: 0
+  };
+
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return {
+        ...defaultDb,
+        ...parsed,
+        users: new Set(parsed.users || [])
+      };
+    }
+  } catch (err) {
+    console.error("Error reading database file, using fallback:", err.message);
+  }
+
+  return { ...defaultDb, users: new Set() };
+}
+
+const db = loadDatabase();
+const userSessions = {}; // transient checkout state
+
+function saveDatabase() {
+  try {
+    const toSave = {
+      ...db,
+      users: Array.from(db.users)
+    };
+    fs.writeFileSync(DB_FILE, JSON.stringify(toSave, null, 2), 'utf8');
+  } catch (err) {
+    console.error("Failed to save database to disk:", err.message);
+  }
+}
 
 // 🌐 Health check HTTP server for Render.com
 const PORT = process.env.PORT || 10000;
@@ -111,8 +166,9 @@ const PRODUCTS_CATALOG = {
       "Ad-free charting with Bar Replay"
     ],
     plans: {
-      "1m": { name: "2 Month subscription", price: 3500 },
-      "3m": { name: "3 Months subscription", price: 4950 },
+      "1m": { name: "1 Month Access", price: 1100 },
+      "3m": { name: "3 Months Access", price: 2950, discountNote: "Save 350 ETB" },
+      "1y": { name: "1 Year Access", price: 9500, discountNote: "Best Value" }
     }
   },
   "tvess": {
@@ -172,17 +228,6 @@ const PRODUCTS_CATALOG = {
   }
 };
 
-// In-Memory Database
-const db = {
-  users: new Set(),
-  userOrders: {},
-  referrals: {},
-  referrerOf: {},
-  userSessions: {},
-  ordersCount: 0,
-  totalRevenue: 0
-};
-
 // 🔍 Multi-Channel Force Join Verification
 async function checkAllChannelMemberships(ctx, userId) {
   if (String(userId) === String(ADMIN_CHAT_ID)) return { allJoined: true, missing: [] };
@@ -190,8 +235,8 @@ async function checkAllChannelMemberships(ctx, userId) {
   const missing = [];
   for (const ch of REQUIRED_CHANNELS) {
     try {
-      const member = await ctx.telegram.getChatMember(ch.username, userId);
-      const isMember = ['member', 'administrator', 'creator'].includes(member.status);
+      const member逗 = await ctx.telegram.getChatMember(ch.username, userId);
+      const isMember = ['member', 'administrator', 'creator'].includes(member逗.status);
       if (!isMember) {
         missing.push(ch);
       }
@@ -276,6 +321,8 @@ bot.start(async (ctx) => {
         } catch (e) {}
       }
     }
+
+    saveDatabase();
 
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, userId);
     if (!allJoined) {
@@ -379,13 +426,13 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
                      product.features.map(f => `• ${f}`).join('\n') +
                      `\n\n👇 **Choose your subscription plan:**`;
 
-      const tierButtons = [
+      const tierButtons述 = [
         [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
         [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
         [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
         [Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ];
-      return ctx.reply(descText, Markup.inlineKeyboard(tierButtons));
+      return ctx.reply(descText, Markup.inlineKeyboard(tierButtons述));
     }
 
     // Standard Plans Display for TradingView Essential
@@ -441,15 +488,16 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
 // Fxreplay Pro Option Selected -> Order Summary & Payment
 bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
   try {
-    const optCode = ctx.match[1];
+    const optCode述 = ctx.match[1];
     const product = PRODUCTS_CATALOG['fxr'];
     let selectedOpt = null;
     let selectedTierName = "";
 
     for (const tKey in product.tiers) {
-      const match = product.tiers[tKey].options.find(o => o.code === optCode);
+      const match = product.tiers[tKey].options.find(o => o.code === optCode述);
       if (match) {
         selectedOpt = match;
+        selectedTierName逗 = product.tiers[tKey].name;
         selectedTierName = product.tiers[tKey].name;
         break;
       }
@@ -459,12 +507,11 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
       return ctx.reply("Option error. Please return to shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
     }
 
-    const session = db.userSessions[ctx.from.id] || {};
-    db.userSessions[ctx.from.id] = {
-      ...session,
+    userSessions[ctx.from.id] = {
       productId: 'fxr',
-      planKey: optCode,
+      planKey: optCode述,
       tool: `Fxreplay Pro - ${selectedOpt.name}`,
+      planTitle: selectedTierName,
       finalPrice: selectedOpt.price
     };
 
@@ -498,13 +545,12 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
     }
 
     const plan = product.plans[planCode];
-    const session = db.userSessions[ctx.from.id] || {};
 
-    db.userSessions[ctx.from.id] = {
-      ...session,
+    userSessions[ctx.from.id] = {
       productId: prodKey,
       planKey: planCode,
-      tool: product.title + " (" + plan.name + ")",
+      tool: `${product.title} (${plan.name})`,
+      planTitle: plan.name,
       finalPrice: plan.price
     };
 
@@ -678,15 +724,20 @@ bot.action('FAQ_SUPPORT', (ctx) => {
   );
 });
 
-// 👥 7. MY ORDERS DASHBOARD
+// 👥 7. MY ORDERS DASHBOARD (Fully Persistent)
 bot.action('ACTION_MY_ORDERS', (ctx) => {
   const userId = ctx.from.id;
   const orders = db.userOrders[userId] || [];
+  const activeOrders = orders.filter(o => o.status === 'Active');
+  const pendingOrders = orders.filter(o => o.status === 'Pending');
 
   ctx.reply(
-    "👥 My Orders\n\n" +
-    "📦 My Orders\n" +
-    "View your purchases, active subscriptions and expiration dates.",
+    "👥 **My Orders Dashboard**\n\n" +
+    "📦 **Overview:**\n" +
+    `• Active Subscriptions: **${activeOrders.length}**\n` +
+    `• Pending Verification: **${pendingOrders.length}**\n` +
+    `• Total History: **${orders.length} orders**\n\n` +
+    "Select an option below to view details:",
     Markup.inlineKeyboard([
       [Markup.button.callback('📦 Active Orders', 'MY_ORDERS_ACTIVE')],
       [Markup.button.callback('🕐 Order History', 'MY_ORDERS_HISTORY')],
@@ -697,13 +748,14 @@ bot.action('ACTION_MY_ORDERS', (ctx) => {
 });
 
 bot.action('MY_ORDERS_ACTIVE', (ctx) => {
-  const userId = ctx.from.id;
-  const orders = db.userOrders[userId] || [];
+  const userId拼 = ctx.from.id;
+  const orders = db.userOrders[userId拼] || [];
   const activeOrders = orders.filter(o => o.status === 'Active');
+  const pendingOrders = orders.filter(o => o.status === 'Pending');
 
-  if (activeOrders.length === 0) {
+  if (activeOrders.length === 0 && pendingOrders.length === 0) {
     return ctx.reply(
-      "📦 Active Orders:\n\nYou do not have any active subscriptions right now.\n\nReady to upgrade your trading?",
+      "📦 **Active Orders:**\n\nYou do not have any active or pending subscriptions right now.\n\nReady to upgrade your trading?",
       Markup.inlineKeyboard([
         [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
         [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
@@ -711,15 +763,29 @@ bot.action('MY_ORDERS_ACTIVE', (ctx) => {
     );
   }
 
-  let responseText = "📦 YOUR ACTIVE SUBSCRIPTIONS:\n\n";
-  activeOrders.forEach((ord) => {
-    responseText += ord.tool + "\n" +
-                    "Status: 🟢 " + ord.status + "\n" +
-                    "Plan: " + (ord.plan || '1 Month') + "\n" +
-                    "Activated: " + ord.activatedDate + "\n" +
-                    "Expires: " + ord.expiresDate + "\n\n";
-  });
-  responseText += "Need help? Contact Support.";
+  let responseText = "📦 **YOUR SUBSCRIPTIONS:**\n\n";
+  
+  if (activeOrders.length > 0) {
+    responseText += "🟢 **ACTIVE SUBSCRIPTIONS:**\n";
+    activeOrders.forEach((ord, i) => {
+      responseText += `**${i + 1}. ${ord.tool}**\n` +
+                      `• Status: 🟢 ${ord.status}\n` +
+                      `• Activated: ${ord.activatedDate}\n` +
+                      `• Expires: ${ord.expiresDate}\n\n`;
+    });
+  }
+
+  if (pendingOrders.length > 0) {
+    responseText += "🟡 **PENDING VERIFICATION:**\n";
+    pendingOrders.forEach((ord, i) => {
+      responseText += `**${i + 1}. ${ord.tool}**\n` +
+                      `• Status: 🟡 Awaiting Admin Approval\n` +
+                      `• Submitted: ${ord.activatedDate}\n` +
+                      `• Amount: ${ord.price || 'Paid'}\n\n`;
+    });
+  }
+
+  responseText += "Need help? Contact @" + SUPPORT_USERNAME;
 
   ctx.reply(responseText, Markup.inlineKeyboard([
     [Markup.button.callback('🔑 My Access', 'MY_ORDERS_KEYS')],
@@ -733,7 +799,7 @@ bot.action('MY_ORDERS_HISTORY', (ctx) => {
 
   if (orders.length === 0) {
     return ctx.reply(
-      "🕐 Order History:\n\nNo previous order records found under your account.",
+      "🕐 **Order History:**\n\nNo previous order records found under your account.",
       Markup.inlineKeyboard([
         [Markup.button.callback('🛍️ Shop First Product', 'ACTION_SHOP')],
         [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
@@ -741,9 +807,10 @@ bot.action('MY_ORDERS_HISTORY', (ctx) => {
     );
   }
 
-  let responseText = "🕐 YOUR ORDER HISTORY:\n\n";
+  let responseText = "🕐 **YOUR ORDER HISTORY:**\n\n";
   orders.forEach((ord, idx) => {
-    responseText += "#" + (ord.id || (1000 + idx + 1)) + " - " + ord.tool + " (" + ord.status + ") on " + ord.activatedDate + "\n";
+    const icon = ord.status === 'Active' ? '🟢' : (ord.status === 'Pending' ? '🟡' : '⚪');
+    responseText += `#${ord.id || (1000 + idx + 1)} - ${ord.tool} (${icon} ${ord.status}) on ${ord.activatedDate}\n`;
   });
 
   ctx.reply(responseText, Markup.inlineKeyboard([
@@ -753,11 +820,11 @@ bot.action('MY_ORDERS_HISTORY', (ctx) => {
 
 bot.action('MY_ORDERS_KEYS', (ctx) => {
   const userId = ctx.from.id;
-  const orders = db.userOrders[userId] || [];
+  const orders = (db.userOrders[userId] || []).filter(o => o.credentials && o.credentials.trim().length > 0);
 
   if (orders.length === 0) {
     return ctx.reply(
-      "🔑 My Access:\n\nNo credentials available. Place an order to receive your login access.",
+      "🔑 **My Access:**\n\nNo active credentials available yet. Once your payment receipt is approved, your access keys will appear right here.",
       Markup.inlineKeyboard([
         [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
         [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
@@ -765,15 +832,19 @@ bot.action('MY_ORDERS_KEYS', (ctx) => {
     );
   }
 
-  let responseText = "🔑 YOUR DELIVERED ACCESS CREDENTIALS:\n\n";
+  let responseText = "🔑 **YOUR DELIVERED ACCESS CREDENTIALS:**\n\n";
   orders.forEach((ord, idx) => {
-    responseText += (idx + 1) + ". " + ord.tool + ":\n" + (ord.credentials || 'Access active via linked email.') + "\n\n";
+    responseText += `**${idx + 1}. ${ord.tool}** (Expires: ${ord.expiresDate}):\n` +
+                    `\`${ord.credentials}\`\n\n`;
   });
 
-  ctx.reply(responseText, Markup.inlineKeyboard([
-    [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)],
-    [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-  ]));
+  ctx.reply(responseText, {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)],
+      [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
+    ])
+  });
 });
 
 bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
@@ -781,44 +852,63 @@ bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
 // 💳 Payment Details Display (With Monospace Click-to-Copy)
 bot.action(/PAY_(.+)/, (ctx) => {
   const method = ctx.match[1];
-  const userSession = db.userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
-  userSession.method = method;
+  const session = userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
+  session.method = method;
 
   let payText = '';
   if (method === 'TELEBIRR') {
-    payText = "📱 *Telebirr Payment Details*\n\n" +
+    payText拼 = "📱 *Telebirr Payment Details*\n\n" +
               "• Phone Number: `" + PAYMENT_INFO.telebirr.number + "` (Tap to copy)\n" +
               "• Account Name: `" + PAYMENT_INFO.telebirr.name + "`\n" +
-              "• Amount: `" + (userSession.finalPrice || 750) + " ETB`\n\n" +
+              "• Amount: `" + (session.finalPrice || 750) + " ETB`\n\n" +
               "⚠️ *Important:* After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
+    payText = payText拼;
   } else {
     payText = "💎 *Binance Payment Details*\n\n" +
               "• Binance Pay ID: `" + PAYMENT_INFO.binance.id + "` (Tap to copy)\n" +
               "• Payee Name: `" + PAYMENT_INFO.binance.name + "`\n" +
-              "• Amount: `" + ((userSession.finalPrice || 750) / 100).toFixed(1) + " USDT`\n\n" +
+              "• Amount: `" + ((session.finalPrice || 750) / 100).toFixed(1) + " USDT`\n\n" +
               "⚠️ *Important:* After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
   }
 
   ctx.reply(payText, { parse_mode: 'Markdown' });
 });
 
-// Customer Uploads Receipt Photo
+// Customer Uploads Receipt Photo -> Automatically registers Pending Order
 bot.on('photo', async (ctx) => {
   try {
     const user = ctx.from;
     db.users.add(user.id);
-    const userSession = db.userSessions[user.id] || { tool: 'Trading Tool', method: 'Direct', finalPrice: 750 };
+    const session = userSessions[user.id] || { tool: 'Trading Tool Access', finalPrice: 750, method: 'Direct' };
     const photo = ctx.message.photo.pop();
+
+    const now = new Date();
+    const orderId = 1000 + (db.userOrders[user.id] ? db.userOrders[user.id].length + 1 : 1);
+
+    // Save pending order immediately into persistent database
+    if (!db.userOrders[user.id]) db.userOrders[user.id] = [];
+    db.userOrders[user.id].push({
+      id: orderId,
+      tool: session.tool || 'Trading Tool Access',
+      plan: session.planTitle || 'Standard Plan',
+      status: 'Pending',
+      price: `${session.finalPrice || 750} ETB`,
+      activatedDate: now.toLocaleDateString(),
+      expiresDate: 'Pending Verification',
+      credentials: ''
+    });
+
+    saveDatabase();
 
     if (ADMIN_CHAT_ID) {
       try {
-        const captionText = "NEW PAYMENT RECEIPT RECEIVED!\n\n" +
-                            "Customer: @" + (user.username || 'NoUsername') + "\n" +
-                            "User ID: " + user.id + "\n" +
-                            "Product: " + userSession.tool + "\n" +
-                            "Amount: " + (userSession.finalPrice || 750) + " ETB\n" +
-                            "Method: " + userSession.method + "\n\n" +
-                            "Copy & paste to deliver credentials:\n" +
+        const captionText = "🚨 **NEW PAYMENT RECEIPT RECEIVED!**\n\n" +
+                            "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
+                            "🆔 User ID: " + user.id + "\n" +
+                            "📦 Product: " + session.tool + "\n" +
+                            "💰 Amount: " + (session.finalPrice || 750) + " ETB\n" +
+                            "💳 Method: " + (session.method || 'Direct') + "\n\n" +
+                            "💡 To approve and send access keys, run:\n" +
                             "/send " + user.id + " Email: ... | Pass: ...";
 
         await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
@@ -832,7 +922,11 @@ bot.on('photo', async (ctx) => {
       }
     }
 
-    ctx.reply("Receipt Received! Our team is verifying your transaction. Your login access keys will be delivered right here within 5 to 15 minutes.");
+    ctx.reply(
+      "⏳ **Receipt Received & Recorded!**\n\n" +
+      "Your order has been saved under **👥 My Orders** with status `🟡 Pending Verification`.\n\n" +
+      "Our team is verifying the payment. Your login credentials will be delivered here within 5–15 minutes."
+    );
   } catch (err) {
     console.error("Error handling photo upload:", err);
   }
@@ -859,30 +953,43 @@ bot.command('send', async (ctx) => {
     const exp = new Date();
     exp.setDate(now.getDate() + 30);
 
-    const deliveryNotification = "CONGRATULATIONS! YOUR ORDER IS APPROVED & ACTIVE!\n\n" +
-                                 "Your Access Credentials:\n\n" +
-                                 customMessage + "\n\n" +
-                                 "Activation Date: " + now.toLocaleDateString() + "\n" +
-                                 "Expiration Date: " + exp.toLocaleDateString() + "\n\n" +
-                                 "You can always view this anytime under the 'My Orders' menu in the bot!\n" +
+    const deliveryNotification = "🎉 **CONGRATULATIONS! YOUR ORDER IS APPROVED & ACTIVE!**\n\n" +
+                                 "🔑 **Your Access Credentials:**\n\n" +
+                                 `\`${customMessage}\`\n\n` +
+                                 "👉 You can always view your credentials anytime under **👥 My Orders > 🔑 My Access** in the bot!\n\n" +
                                  "Need assistance? Contact @" + SUPPORT_USERNAME + ". Happy Trading!";
 
-    await bot.telegram.sendMessage(targetUserId, deliveryNotification);
+    await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'Markdown' });
 
+    // Update existing pending order or create new active order in persistent database
     if (!db.userOrders[targetUserId]) db.userOrders[targetUserId] = [];
-    db.userOrders[targetUserId].push({
-      id: 1000 + db.userOrders[targetUserId].length + 1,
-      tool: "Trading Tool Access",
-      plan: "Standard",
-      status: "Active",
-      activatedDate: now.toLocaleDateString(),
-      expiresDate: exp.toLocaleDateString(),
-      credentials: customMessage
-    });
+    
+    const pendingIdx = db.userOrders[targetUserId].findIndex(o => o.status === 'Pending');
+    if (pendingIdx !== -1) {
+      db.userOrders[targetUserId][pendingIdx].status = 'Active';
+      db.userOrders[targetUserId][pendingIdx].activatedDate述 = now.toLocaleDateString();
+      db.userOrders[targetUserId][pendingIdx].activatedDate = now.toLocaleDateString();
+      db.userOrders[targetUserId][pendingIdx].expiresDate = exp.toLocaleDateString();
+      db.userOrders[targetUserId][pendingIdx].credentials = customMessage;
+    } else {
+      db.userOrders[targetUserId].push({
+        id: 1000 + db.userOrders[targetUserId].length + 1,
+        tool: (userSessions[targetUserId] && userSessions[targetUserId].tool) ? userSessions[targetUserId].tool : "Trading Tool Access",
+        plan: "1 Month / Standard",
+        status: "Active",
+        price: "Paid",
+        activatedDate: now.toLocaleDateString(),
+        expiresDate: exp.toLocaleDateString(),
+        credentials: customMessage
+      });
+    }
 
-    db.ordersCount += 1;
-    db.totalRevenue += 750;
-    ctx.reply("Credentials delivered and recorded in Customer (ID: " + targetUserId + ") Orders Dashboard!");
+    db.ordersCount = (db.ordersCount || 0) + 1;
+    db.totalRevenue = (db.totalRevenue || 0) + (userSessions[targetUserId] ? userSessions[targetUserId].finalPrice || 750 : 750);
+
+    saveDatabase();
+
+    ctx.reply("✅ Credentials delivered and PERMANENTLY saved to Customer (ID: " + targetUserId + ") Orders Dashboard!");
   } catch (err) {
     ctx.reply("Delivery failed! Error: " + err.message);
   }
@@ -925,17 +1032,17 @@ bot.command('stats', (ctx) => {
   }
 
   const totalUsers = db.users.size;
-  const totalOrders = db.ordersCount;
-  const totalRevenue = db.totalRevenue;
+  const totalOrders = db.ordersCount || 0;
+  const totalRevenue = db.totalRevenue || 0;
 
   ctx.reply(
-    "A T T S BUSINESS ANALYTICS DASHBOARD:\n\n" +
-    "Total Registered Traders: " + totalUsers + " users\n" +
-    "Total Processed Orders: " + totalOrders + " orders\n" +
-    "Estimated Revenue: " + totalRevenue.toLocaleString() + " ETB\n" +
-    "Bot Runtime: Active 24/7 on Render Cloud",
+    "📊 **A T T S BUSINESS ANALYTICS DASHBOARD:**\n\n" +
+    "👥 **Total Registered Traders:** " + totalUsers + " users\n" +
+    "📦 **Total Completed Orders:** " + totalOrders + " orders\n" +
+    "💰 **Total Recorded Revenue:** " + totalRevenue.toLocaleString() + " ETB\n" +
+    "⚡ **Database:** Disk JSON Persistent Storage Active",
     Markup.inlineKeyboard([
-      [Markup.button.callback('Refresh Stats', 'REFRESH_STATS')]
+      [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
     ])
   );
 });
@@ -943,12 +1050,12 @@ bot.command('stats', (ctx) => {
 bot.action('REFRESH_STATS', (ctx) => {
   if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return;
   ctx.editMessageText(
-    "A T T S BUSINESS ANALYTICS (Live Update):\n\n" +
-    "Total Traders: " + db.users.size + " users\n" +
-    "Completed Orders: " + db.ordersCount + "\n" +
-    "Revenue: " + db.totalRevenue.toLocaleString() + " ETB",
+    "📊 **A T T S BUSINESS ANALYTICS (Live Update):**\n\n" +
+    "👥 **Total Traders:** " + db.users.size + " users\n" +
+    "📦 **Completed Orders:** " + (db.ordersCount || 0) + "\n" +
+    "💰 **Revenue:** " + (db.totalRevenue || 0).toLocaleString() + " ETB",
     Markup.inlineKeyboard([
-      [Markup.button.callback('Refresh Stats', 'REFRESH_STATS')]
+      [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
     ])
   );
 });
@@ -957,6 +1064,14 @@ bot.action('REFRESH_STATS', (ctx) => {
 bot.action(/REJECT_(\d+)/, async (ctx) => {
   const targetUserId = ctx.match[1];
   try {
+    if (db.userOrders[targetUserId]) {
+      const pendingIdx = db.userOrders[targetUserId].findIndex(o => o.status === 'Pending');
+      if (pendingIdx !== -1) {
+        db.userOrders[targetUserId][pendingIdx].status = 'Rejected';
+        saveDatabase();
+      }
+    }
+
     await bot.telegram.sendMessage(
       targetUserId,
       "Payment Verification Unsuccessful.\n\nWe could not confirm the uploaded transaction receipt. Please ensure you sent the correct screenshot or contact support at @" + SUPPORT_USERNAME
@@ -971,7 +1086,7 @@ bot.action(/REJECT_(\d+)/, async (ctx) => {
 async function startBotWithRetry() {
   try {
     await bot.launch();
-    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7!');
+    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7 with Disk Database!');
   } catch (err) {
     console.error('Bot launch error, retrying in 5 seconds...', err.message);
     setTimeout(startBotWithRetry, 5000);
