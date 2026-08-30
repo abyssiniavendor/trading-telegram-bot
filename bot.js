@@ -111,9 +111,8 @@ const PRODUCTS_CATALOG = {
       "Ad-free charting with Bar Replay"
     ],
     plans: {
-      "1m": { name: "1 Month Access", price: 1100 },
-      "3m": { name: "3 Months Access", price: 2950, discountNote: "Save 350 ETB" },
-      "1y": { name: "1 Year Access", price: 9500, discountNote: "Best Value" }
+      "1m": { name: "2 Month subscription", price: 3500 },
+      "3m": { name: "3 Months subscription", price: 4950 },
     }
   },
   "tvess": {
