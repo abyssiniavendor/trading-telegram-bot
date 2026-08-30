@@ -11,7 +11,7 @@ const path = require('path');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
-const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniatradinget";
+const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniavendor";
 
 // 📢 Required Channels that users must join
 const REQUIRED_CHANNELS = [
@@ -731,7 +731,7 @@ bot.action('FAQ_CHANGE_ACC', (ctx) => {
 bot.action('FAQ_EXPIRY', (ctx) => {
   ctx.reply(
     "⏰ <b>What happens when my subscription expires?</b>\n\n" +
-    "You will receive an automated 1-click renewal reminder 3 days prior to expiration so your charting or backtesting setups never get interrupted.",
+    "You will receive an automated 1-click renewal reminder before expiration so your charting or backtesting setups never get interrupted.",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -745,7 +745,7 @@ bot.action('FAQ_EXPIRY', (ctx) => {
 bot.action('FAQ_PROBLEM', (ctx) => {
   ctx.reply(
     "🛠️ <b>What if I have a problem?</b>\n\n" +
-    "We offer 24/7 dedicated customer assistance. If you ever experience an issue with login, bar replay, or CME data, we resolve or replace it within minutes!",
+    "We offer dedicated customer assistance. If you ever experience an issue with login or setups, we resolve or replace it promptly!",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -759,8 +759,8 @@ bot.action('FAQ_PROBLEM', (ctx) => {
 bot.action('FAQ_SUPPORT', (ctx) => {
   ctx.reply(
     "📞 <b>How do I contact support?</b>\n\n" +
-    "You can reach our official administration team directly via Telegram:\n" +
-    "👉 @" + SUPPORT_USERNAME + " (24/7 Fast Response)",
+    "You can reach our official team directly via Telegram:\n" +
+    "👉 @" + SUPPORT_USERNAME,
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -771,7 +771,7 @@ bot.action('FAQ_SUPPORT', (ctx) => {
   );
 });
 
-// 👥 7. MY ORDERS DASHBOARD (Clean, Persistent & Professional)
+// 👥 7. MY ORDERS DASHBOARD (No confusing dates)
 bot.action('ACTION_MY_ORDERS', (ctx) => {
   const userId = ctx.from.id;
   const orders = db.userOrders[userId] || [];
@@ -822,9 +822,7 @@ bot.action('MY_ORDERS_ACTIVE', (ctx) => {
     responseText += "🟢 <b>ACTIVE SUBSCRIPTIONS:</b>\n";
     activeOrders.forEach((ord, i) => {
       responseText += `<b>${i + 1}. ${ord.tool}</b>\n` +
-                      `• Status: 🟢 Active\n` +
-                      `• Activated: ${ord.activatedDate}\n` +
-                      `• Expires: ${ord.expiresDate}\n\n`;
+                      `• Status: 🟢 Active\n\n`;
     });
   }
 
@@ -832,13 +830,12 @@ bot.action('MY_ORDERS_ACTIVE', (ctx) => {
     responseText += "🟡 <b>PENDING VERIFICATION:</b>\n";
     pendingOrders.forEach((ord, i) => {
       responseText += `<b>${i + 1}. ${ord.tool}</b>\n` +
-                      `• Status: 🟡 Awaiting Admin Approval\n` +
-                      `• Submitted: ${ord.activatedDate}\n` +
+                      `• Status: 🟡 Awaiting Verification\n` +
                       `• Amount: ${ord.price || 'Paid'}\n\n`;
     });
   }
 
-  responseText += "Need help? Contact @" + SUPPORT_USERNAME;
+  responseText += "Need assistance? Contact @" + SUPPORT_USERNAME;
 
   ctx.reply(responseText, {
     parse_mode: 'HTML',
@@ -869,7 +866,7 @@ bot.action('MY_ORDERS_HISTORY', (ctx) => {
   let responseText = "🕐 <b>YOUR ORDER HISTORY:</b>\n\n";
   orders.forEach((ord, idx) => {
     const icon = ord.status === 'Active' ? '🟢' : (ord.status === 'Pending' ? '🟡' : '⚪');
-    responseText += `#${ord.id || (1000 + idx + 1)} - ${ord.tool} (${icon} ${ord.status}) on ${ord.activatedDate}\n`;
+    responseText += `#${ord.id || (1000 + idx + 1)} - ${ord.tool} (${icon} ${ord.status})\n`;
   });
 
   ctx.reply(responseText, {
@@ -899,9 +896,14 @@ bot.action('MY_ORDERS_KEYS', (ctx) => {
 
   let responseText = "🔑 <b>YOUR DELIVERED ACCESS CREDENTIALS:</b>\n\n";
   orders.forEach((ord, idx) => {
-    responseText += `<b>${idx + 1}. ${ord.tool}</b> (Expires: ${ord.expiresDate}):\n` +
+    responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
                     `<code>${ord.credentials}</code>\n\n`;
   });
+
+  responseText += "📂 My Orders → 🔑 My Access\n" +
+                  "🔒 Keep your credentials secure.\n\n" +
+                  "Need assistance?\n" +
+                  "📩 @" + SUPPORT_USERNAME;
 
   ctx.reply(responseText, {
     parse_mode: 'HTML',
@@ -946,7 +948,6 @@ bot.on('photo', async (ctx) => {
     const session = userSessions[user.id] || { tool: 'Trading Tool Access', finalPrice: 750, method: 'Direct' };
     const photo = ctx.message.photo.pop();
 
-    const now = new Date();
     const orderId = 1000 + (db.userOrders[user.id] ? db.userOrders[user.id].length + 1 : 1);
 
     // Save pending order immediately into persistent database
@@ -957,8 +958,6 @@ bot.on('photo', async (ctx) => {
       plan: session.planTitle || 'Standard Plan',
       status: 'Pending',
       price: `${session.finalPrice || 750} ETB`,
-      activatedDate: now.toLocaleDateString(),
-      expiresDate: 'Pending Verification',
       credentials: ''
     });
 
@@ -1015,17 +1014,14 @@ bot.command('send', async (ctx) => {
     const targetUserId = parts[1];
     const customMessage = parts.slice(2).join(' ');
 
-    const now = new Date();
-    const exp = new Date();
-    exp.setDate(now.getDate() + 30);
-
-    const deliveryNotification = "🎉 <b>CONGRATULATIONS! YOUR ORDER IS APPROVED & ACTIVE!</b>\n\n" +
-                                 "🔑 <b>Your Access Credentials:</b>\n\n" +
+    const deliveryNotification = "✅ <b>Order Activated</b>\n\n" +
+                                 "Your payment has been verified and your order is now active.\n\n" +
+                                 "🔐 <b>Login Details</b>\n" +
                                  `<code>${customMessage}</code>\n\n` +
-                                 "📅 <b>Activation Date:</b> " + now.toLocaleDateString() + "\n" +
-                                 "⏳ <b>Expiration Date:</b> " + exp.toLocaleDateString() + "\n\n" +
-                                 "👉 You can always view your credentials anytime under <b>👥 My Orders > 🔑 My Access</b> in the bot!\n\n" +
-                                 "Need assistance? Contact @" + SUPPORT_USERNAME + ". Happy Trading!";
+                                 "📂 <b>My Orders → 🔑 My Access</b>\n" +
+                                 "🔒 Keep your credentials secure.\n\n" +
+                                 "Need assistance?\n" +
+                                 "📩 @" + SUPPORT_USERNAME;
 
     await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
 
@@ -1035,18 +1031,14 @@ bot.command('send', async (ctx) => {
     const pendingIdx = db.userOrders[targetUserId].findIndex(o => o.status === 'Pending');
     if (pendingIdx !== -1) {
       db.userOrders[targetUserId][pendingIdx].status = 'Active';
-      db.userOrders[targetUserId][pendingIdx].activatedDate = now.toLocaleDateString();
-      db.userOrders[targetUserId][pendingIdx].expiresDate = exp.toLocaleDateString();
       db.userOrders[targetUserId][pendingIdx].credentials = customMessage;
     } else {
       db.userOrders[targetUserId].push({
         id: 1000 + db.userOrders[targetUserId].length + 1,
         tool: (userSessions[targetUserId] && userSessions[targetUserId].tool) ? userSessions[targetUserId].tool : "Trading Tool Access",
-        plan: "1 Month / Standard",
+        plan: "Standard Plan",
         status: "Active",
         price: "Paid",
-        activatedDate: now.toLocaleDateString(),
-        expiresDate: exp.toLocaleDateString(),
         credentials: customMessage
       });
     }
@@ -1056,7 +1048,7 @@ bot.command('send', async (ctx) => {
 
     saveDatabase();
 
-    ctx.reply("✅ Credentials delivered and PERMANENTLY saved to Customer (ID: " + targetUserId + ") Orders Dashboard!");
+    ctx.reply("✅ Order activated and credentials delivered to Customer (ID: " + targetUserId + ")!");
   } catch (err) {
     ctx.reply("Delivery failed! Error: " + err.message);
   }
@@ -1160,7 +1152,7 @@ bot.action(/REJECT_(\d+)/, async (ctx) => {
 async function startBotWithRetry() {
   try {
     await bot.launch();
-    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7 with Clean HTML Formatting!');
+    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7!');
   } catch (err) {
     console.error('Bot launch error, retrying in 5 seconds...', err.message);
     setTimeout(startBotWithRetry, 5000);
