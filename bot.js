@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH WEEKLY ROTATION & MONGODB CLOUD
+// 24/7 PRODUCTION SCRIPT WITH SEAMLESS STATUS ACTIVATION & EXPIRY
 // ============================================================
 
 require('dotenv').config();
@@ -157,7 +157,8 @@ async function getUserOrders(userId) {
 async function addPendingOrder(userId, username, tool, plan, price) {
   userId = String(userId);
   const isMonthlyFxr = tool.toLowerCase().includes('fxreplay') && (plan.toLowerCase().includes('month') || tool.toLowerCase().includes('month'));
-  const totalWeeks = isMonthlyFxr ? 5 : 1;
+  const isTwoWeekFxr = tool.toLowerCase().includes('fxreplay') && (plan.toLowerCase().includes('two') || tool.toLowerCase().includes('2'));
+  const totalWeeks = isMonthlyFxr ? 5 : (isTwoWeekFxr ? 2 : 1);
 
   if (isMongoConnected) {
     try {
@@ -198,25 +199,29 @@ async function activateOrder(userId, customMessage, durationDays = null) {
 
   if (isMongoConnected) {
     try {
-      const pending = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
-      if (pending) {
-        pending.status = 'Active';
-        pending.credentials = customMessage;
-        pending.expiresAt = expiresAt;
-        await pending.save();
-        return pending;
+      // Find latest pending order first, or any latest order
+      let targetOrder = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
+      if (targetOrder) {
+        targetOrder.status = 'Active';
+        targetOrder.credentials = customMessage;
+        if (expiresAt) targetOrder.expiresAt = expiresAt;
+        if (durationDays) targetOrder.plan = `${targetOrder.plan} (${durationDays} Days)`;
+        await targetOrder.save();
+        return targetOrder;
       } else {
         return await Order.create({
           userId,
           tool: 'Trading Tool Access',
-          plan: durationDays ? `${durationDays} Days` : 'Standard',
+          plan: durationDays ? `${durationDays} Days Access` : 'Standard Access',
           status: 'Active',
           price: 'Paid',
           credentials: customMessage,
           expiresAt: expiresAt
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Error activating order:", e.message);
+    }
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
@@ -230,7 +235,7 @@ async function activateOrder(userId, customMessage, durationDays = null) {
       _id: Date.now().toString(),
       userId,
       tool: 'Trading Tool Access',
-      plan: durationDays ? `${durationDays} Days` : 'Standard',
+      plan: durationDays ? `${durationDays} Days Access` : 'Standard Access',
       status: 'Active',
       price: 'Paid',
       credentials: customMessage,
@@ -245,19 +250,25 @@ async function updateWeeklyAccount(userId, weekNum, credentials) {
 
   if (isMongoConnected) {
     try {
-      const activeOrder = await Order.findOne({ userId, status: 'Active' }).sort({ createdAt: -1 });
-      if (activeOrder) {
-        activeOrder.currentWeek = weekNum;
-        activeOrder.credentials = credentials;
-        if (!activeOrder.weeklyHistory) activeOrder.weeklyHistory = [];
-        activeOrder.weeklyHistory.push({ week: weekNum, credentials, date: new Date() });
-        await activeOrder.save();
-        return activeOrder;
+      // Check for pending order first and activate it, or update existing active order
+      let targetOrder = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
+      if (!targetOrder) {
+        targetOrder = await Order.findOne({ userId, status: 'Active' }).sort({ createdAt: -1 });
+      }
+
+      if (targetOrder) {
+        targetOrder.status = 'Active';
+        targetOrder.currentWeek = weekNum;
+        targetOrder.credentials = credentials;
+        if (!targetOrder.weeklyHistory) targetOrder.weeklyHistory = [];
+        targetOrder.weeklyHistory.push({ week: weekNum, credentials, date: new Date() });
+        await targetOrder.save();
+        return targetOrder;
       } else {
         return await Order.create({
           userId,
-          tool: 'Fxreplay Pro (Monthly)',
-          plan: 'Monthly (5-Week Rotation)',
+          tool: 'Fxreplay Pro Subscription',
+          plan: 'Multi-Week Plan',
           status: 'Active',
           price: 'Paid',
           currentWeek: weekNum,
@@ -270,18 +281,19 @@ async function updateWeeklyAccount(userId, weekNum, credentials) {
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
-  const activeOrder = fallbackDb.userOrders[userId].find(o => o.status === 'Active');
-  if (activeOrder) {
-    activeOrder.currentWeek = weekNum;
-    activeOrder.credentials = credentials;
-    if (!activeOrder.weeklyHistory) activeOrder.weeklyHistory = [];
-    activeOrder.weeklyHistory.push({ week: weekNum, credentials, date: new Date() });
+  let order = fallbackDb.userOrders[userId].find(o => o.status === 'Pending') || fallbackDb.userOrders[userId].find(o => o.status === 'Active');
+  if (order) {
+    order.status = 'Active';
+    order.currentWeek = weekNum;
+    order.credentials = credentials;
+    if (!order.weeklyHistory) order.weeklyHistory = [];
+    order.weeklyHistory.push({ week: weekNum, credentials, date: new Date() });
   } else {
     fallbackDb.userOrders[userId].unshift({
       _id: Date.now().toString(),
       userId,
-      tool: 'Fxreplay Pro (Monthly)',
-      plan: 'Monthly (5-Week Rotation)',
+      tool: 'Fxreplay Pro Subscription',
+      plan: 'Multi-Week Plan',
       status: 'Active',
       price: 'Paid',
       currentWeek: weekNum,
@@ -391,7 +403,7 @@ const PRODUCTS_CATALOG = {
       "Realistic simulated broker fills & spreads",
       "Automated Trade Analytics & Win-rate tracking",
       "Unlimited charts & historical tick replay",
-      "Monthly plan includes 5 consecutive weekly accounts"
+      "Monthly plan includes 5 weekly accounts | 2-Weeks plan includes 2 accounts"
     ],
     tiers: {
       "monthly": {
@@ -404,14 +416,14 @@ const PRODUCTS_CATALOG = {
         ]
       },
       "twoweeks": {
-        name: "Two weeks subscription plan",
+        name: "Two weeks subscription plan (2 Weeks)",
         options: [
           { code: "fxr_2w_w", name: "Two weeks + weekly subscription", price: 550 },
           { code: "fxr_2w_w_notion", name: "Two weeks + weekly subscription + Notion pro journaling template", price: 600 }
         ]
       },
       "weekly": {
-        name: "Weekly subscription plan",
+        name: "Weekly subscription plan (1 Week)",
         options: [
           { code: "fxr_w_single", name: "Weekly subscription", price: 250 },
           { code: "fxr_w_notion", name: "Weekly subscription + Notion pro journaling template tool", price: 300 }
@@ -556,7 +568,7 @@ bot.command('expire', async (ctx) => {
   }
 });
 
-// 📅 Weekly Account Delivery for Fxreplay (/sendweek <userId> <weekNum> <credentials>)
+// 📅 Weekly Account Delivery (/sendweek <userId> <weekNum> <credentials>)
 bot.command('sendweek', async (ctx) => {
   try {
     if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
@@ -574,11 +586,11 @@ bot.command('sendweek', async (ctx) => {
     const weekNum = parseInt(parts[2], 10);
     const customMessage = parts.slice(3).join(' ');
 
-    if (isNaN(weekNum) || weekNum < 1 || weekNum > 5) {
-      return ctx.reply('Week number must be between 1 and 5.');
+    if (isNaN(weekNum) || weekNum < 1 || weekNum > 10) {
+      return ctx.reply('Week number must be a valid number.');
     }
 
-    const deliveryNotification = `🔄 <b>Fxreplay Weekly Account Update (Week ${weekNum} of 5)</b>\n\n` +
+    const deliveryNotification = `🔄 <b>Fxreplay Weekly Account Update (Week ${weekNum})</b>\n\n` +
                                  `Your active login credentials for <b>Week ${weekNum}</b> have been updated:\n\n` +
                                  `🔐 <b>Login Details:</b>\n` +
                                  `<code>${customMessage}</code>\n\n` +
@@ -590,7 +602,7 @@ bot.command('sendweek', async (ctx) => {
     await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
     await updateWeeklyAccount(targetUserId, weekNum, customMessage);
 
-    ctx.reply(`✅ Week ${weekNum} credentials sent and saved for user ID: ${targetUserId}!`);
+    ctx.reply(`✅ Week ${weekNum} credentials sent and ACTIVATED for user ID: ${targetUserId}!`);
   } catch (err) {
     ctx.reply('Error in sendweek: ' + err.message);
   }
@@ -715,8 +727,8 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
 
       const tierButtons = [
         [Markup.button.callback('📅 Monthly subscription plan (5 Weeks)', 'FXR_TIER_monthly')],
-        [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
-        [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
+        [Markup.button.callback('⏳ Two weeks subscription plan (2 Weeks)', 'FXR_TIER_twoweeks')],
+        [Markup.button.callback('⚡ Weekly subscription plan (1 Week)', 'FXR_TIER_weekly')],
         [Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ];
       return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
@@ -849,7 +861,7 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
     "2. 📊 <b>TradingView Premium + CME Data</b>\n   • Status: 🚫 Out of Stock\n\n" +
     "3. 📈 <b>TradingView Essential</b>\n   • 1 Month: 1,100 ETB\n   • 3 Months: 2,950 ETB\n\n" +
     "4. 📈 <b>TradingView Essential + CME Data</b>\n   • 1 Month: 1,350 ETB\n   • 3 Months: 3,600 ETB\n\n" +
-    "5. 🔄 <b>Fxreplay Pro</b>\n   • Monthly (5 Weeks): From 750 ETB\n   • Two Weeks Plans: From 550 ETB\n   • Weekly Plans: From 250 ETB\n\n" +
+    "5. 🔄 <b>Fxreplay Pro</b>\n   • Monthly (5 Weeks): From 750 ETB\n   • Two Weeks (2 Weeks): From 550 ETB\n   • Weekly Plans: From 250 ETB\n\n" +
     "6. 📓 <b>Abyssinia Journal</b>\n   • Status: ✨ Coming Soon!",
     {
       parse_mode: 'HTML',
@@ -866,7 +878,7 @@ bot.action('ACTION_OFFERS', (ctx) => {
   ctx.reply(
     "🎁 <b>Special Season Offers:</b>\n\n" +
     "🔥 <b>TradingView Essential + CME Data</b>\nGet full real-time CME market data for only 3,600 ETB (3 Months).\n\n" +
-    "🔥 <b>Fxreplay Pro Multi-Timeframe Packs</b>\nFull backtesting access starting at just 250 ETB (Monthly includes 5 consecutive weekly accounts).\n\n" +
+    "🔥 <b>Fxreplay Pro Multi-Timeframe Packs</b>\nFull backtesting access starting at just 250 ETB.\n\n" +
     "🔥 <b>Abyssinia Journal Launch Special</b>\nComing soon with early bird pricing!",
     {
       parse_mode: 'HTML',
@@ -1104,11 +1116,16 @@ bot.on('photo', async (ctx) => {
     if (ADMIN_CHAT_ID) {
       try {
         const isMonthlyFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('month') || session.tool.toLowerCase().includes('month'));
+        const isTwoWeekFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('two') || session.tool.toLowerCase().includes('2'));
+
         let helpCommands = `💡 Deliver standard order:\n<code>/send ${user.id} Email: ... | Pass: ...</code>\n\n`;
         if (isMonthlyFxr) {
           helpCommands += `💡 <b>Fxreplay Monthly (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
+        } else if (isTwoWeekFxr) {
+          helpCommands += `💡 <b>Fxreplay 2-Weeks (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
         }
-        helpCommands += `💡 To expire subscription later:\n<code>/expire ${user.id}</code>`;
+        helpCommands += `💡 Or with duration (e.g. 14d, 30d):\n<code>/send ${user.id} 14d Email: ... | Pass: ...</code>\n\n` +
+                        `💡 To expire subscription anytime:\n<code>/expire ${user.id}</code>`;
 
         const captionText = "🚨 <b>NEW PAYMENT RECEIPT RECEIVED!</b>\n\n" +
                             "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
@@ -1148,7 +1165,7 @@ bot.command('send', async (ctx) => {
     const parts = messageText.split(' ');
 
     if (parts.length < 3) {
-      return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nOr with days:\n/send <USER_ID> 7d <Credentials>');
+      return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nOr with days:\n/send <USER_ID> 14d <Credentials>');
     }
 
     const targetUserId = parts[1];
@@ -1179,7 +1196,7 @@ bot.command('send', async (ctx) => {
     await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
     await activateOrder(targetUserId, customMessage, durationDays);
 
-    ctx.reply(`✅ Order activated for Customer (ID: ${targetUserId})!${durationDays ? ` (Auto-expires in ${durationDays} days)` : ''}`);
+    ctx.reply(`✅ Order activated and set to ACTIVE for Customer (ID: ${targetUserId})!${durationDays ? ` (Auto-expires in ${durationDays} days)` : ''}`);
   } catch (err) {
     ctx.reply("Delivery failed: " + err.message);
   }
