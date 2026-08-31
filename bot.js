@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH SEAMLESS STATUS ACTIVATION & EXPIRY
+// 24/7 PRODUCTION SCRIPT WITH CLEAN FXREPLAY TIERS & MONGODB CLOUD
 // ============================================================
 
 require('dotenv').config();
@@ -199,20 +199,18 @@ async function activateOrder(userId, customMessage, durationDays = null) {
 
   if (isMongoConnected) {
     try {
-      // Find latest pending order first, or any latest order
       let targetOrder = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
       if (targetOrder) {
         targetOrder.status = 'Active';
         targetOrder.credentials = customMessage;
         if (expiresAt) targetOrder.expiresAt = expiresAt;
-        if (durationDays) targetOrder.plan = `${targetOrder.plan} (${durationDays} Days)`;
         await targetOrder.save();
         return targetOrder;
       } else {
         return await Order.create({
           userId,
           tool: 'Trading Tool Access',
-          plan: durationDays ? `${durationDays} Days Access` : 'Standard Access',
+          plan: 'Standard Access',
           status: 'Active',
           price: 'Paid',
           credentials: customMessage,
@@ -235,7 +233,7 @@ async function activateOrder(userId, customMessage, durationDays = null) {
       _id: Date.now().toString(),
       userId,
       tool: 'Trading Tool Access',
-      plan: durationDays ? `${durationDays} Days Access` : 'Standard Access',
+      plan: 'Standard Access',
       status: 'Active',
       price: 'Paid',
       credentials: customMessage,
@@ -250,7 +248,6 @@ async function updateWeeklyAccount(userId, weekNum, credentials) {
 
   if (isMongoConnected) {
     try {
-      // Check for pending order first and activate it, or update existing active order
       let targetOrder = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
       if (!targetOrder) {
         targetOrder = await Order.findOne({ userId, status: 'Active' }).sort({ createdAt: -1 });
@@ -268,7 +265,7 @@ async function updateWeeklyAccount(userId, weekNum, credentials) {
         return await Order.create({
           userId,
           tool: 'Fxreplay Pro Subscription',
-          plan: 'Multi-Week Plan',
+          plan: 'Standard Plan',
           status: 'Active',
           price: 'Paid',
           currentWeek: weekNum,
@@ -293,7 +290,7 @@ async function updateWeeklyAccount(userId, weekNum, credentials) {
       _id: Date.now().toString(),
       userId,
       tool: 'Fxreplay Pro Subscription',
-      plan: 'Multi-Week Plan',
+      plan: 'Standard Plan',
       status: 'Active',
       price: 'Paid',
       currentWeek: weekNum,
@@ -370,7 +367,7 @@ const PAYMENT_INFO = {
   binance: { id: "874067761", name: "ABYSSINIAVENDOR" }
 };
 
-// Catalog
+// Clean Catalog
 const PRODUCTS_CATALOG = {
   "tvprem_pure": { id: "tvprem_pure", title: "📊 TradingView Premium", tagline: "Top tier TradingView plan.", outOfStock: true },
   "tvprem": { id: "tvprem", title: "📊 TradingView Premium + CME Data", tagline: "Top tier with CME Data.", outOfStock: true },
@@ -402,12 +399,11 @@ const PRODUCTS_CATALOG = {
       "True multi-timeframe backtesting engine",
       "Realistic simulated broker fills & spreads",
       "Automated Trade Analytics & Win-rate tracking",
-      "Unlimited charts & historical tick replay",
-      "Monthly plan includes 5 weekly accounts | 2-Weeks plan includes 2 accounts"
+      "Unlimited charts & historical tick replay"
     ],
     tiers: {
       "monthly": {
-        name: "Monthly subscription plan (5 Weeks)",
+        name: "Monthly subscription plan",
         options: [
           { code: "fxr_m_mw", name: "Monthly + weekly subscription", price: 2000 },
           { code: "fxr_m_mw_aj", name: "Monthly + weekly + Abyssinia Journal subscription", price: 2500 },
@@ -416,14 +412,14 @@ const PRODUCTS_CATALOG = {
         ]
       },
       "twoweeks": {
-        name: "Two weeks subscription plan (2 Weeks)",
+        name: "Two weeks subscription plan",
         options: [
           { code: "fxr_2w_w", name: "Two weeks + weekly subscription", price: 550 },
           { code: "fxr_2w_w_notion", name: "Two weeks + weekly subscription + Notion pro journaling template", price: 600 }
         ]
       },
       "weekly": {
-        name: "Weekly subscription plan (1 Week)",
+        name: "Weekly subscription plan",
         options: [
           { code: "fxr_w_single", name: "Weekly subscription", price: 250 },
           { code: "fxr_w_notion", name: "Weekly subscription + Notion pro journaling template tool", price: 300 }
@@ -726,9 +722,9 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
                      `\n\n👇 <b>Choose your subscription plan:</b>`;
 
       const tierButtons = [
-        [Markup.button.callback('📅 Monthly subscription plan (5 Weeks)', 'FXR_TIER_monthly')],
-        [Markup.button.callback('⏳ Two weeks subscription plan (2 Weeks)', 'FXR_TIER_twoweeks')],
-        [Markup.button.callback('⚡ Weekly subscription plan (1 Week)', 'FXR_TIER_weekly')],
+        [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
+        [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
+        [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
         [Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ];
       return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
@@ -861,7 +857,7 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
     "2. 📊 <b>TradingView Premium + CME Data</b>\n   • Status: 🚫 Out of Stock\n\n" +
     "3. 📈 <b>TradingView Essential</b>\n   • 1 Month: 1,100 ETB\n   • 3 Months: 2,950 ETB\n\n" +
     "4. 📈 <b>TradingView Essential + CME Data</b>\n   • 1 Month: 1,350 ETB\n   • 3 Months: 3,600 ETB\n\n" +
-    "5. 🔄 <b>Fxreplay Pro</b>\n   • Monthly (5 Weeks): From 750 ETB\n   • Two Weeks (2 Weeks): From 550 ETB\n   • Weekly Plans: From 250 ETB\n\n" +
+    "5. 🔄 <b>Fxreplay Pro</b>\n   • Monthly Plans: From 750 ETB\n   • Two Weeks Plans: From 550 ETB\n   • Weekly Plans: From 250 ETB\n\n" +
     "6. 📓 <b>Abyssinia Journal</b>\n   • Status: ✨ Coming Soon!",
     {
       parse_mode: 'HTML',
@@ -979,9 +975,7 @@ bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   if (activeOrders.length > 0) {
     responseText += "🟢 <b>ACTIVE SUBSCRIPTIONS:</b>\n";
     activeOrders.forEach((ord, i) => {
-      const isMultiWeek = ord.totalWeeks && ord.totalWeeks > 1;
-      const weekInfo = isMultiWeek ? ` (Week ${ord.currentWeek || 1} of ${ord.totalWeeks})` : '';
-      responseText += `<b>${i + 1}. ${ord.tool}${weekInfo}</b>\n• Status: 🟢 Active\n\n`;
+      responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟢 Active\n\n`;
     });
   }
 
@@ -1052,16 +1046,8 @@ bot.action('MY_ORDERS_KEYS', async (ctx) => {
 
   let responseText = "🔑 <b>YOUR DELIVERED ACCESS CREDENTIALS:</b>\n\n";
   orders.forEach((ord, idx) => {
-    const isMultiWeek = ord.totalWeeks && ord.totalWeeks > 1;
-    if (isMultiWeek) {
-      responseText += `<b>${idx + 1}. ${ord.tool}</b>\n` +
-                      `• 📅 <b>Active Period:</b> Week ${ord.currentWeek || 1} of ${ord.totalWeeks}\n` +
-                      `• 🔐 <b>Current Login:</b>\n<code>${ord.credentials}</code>\n` +
-                      `<i>ℹ️ Next weekly account will be updated automatically right here.</i>\n\n`;
-    } else {
-      responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
-                      `<code>${ord.credentials}</code>\n\n`;
-    }
+    responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
+                    `<code>${ord.credentials}</code>\n\n`;
   });
 
   responseText += "📂 My Orders → 🔑 My Access\n" +
@@ -1115,25 +1101,20 @@ bot.on('photo', async (ctx) => {
 
     if (ADMIN_CHAT_ID) {
       try {
-        const isMonthlyFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('month') || session.tool.toLowerCase().includes('month'));
-        const isTwoWeekFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('two') || session.tool.toLowerCase().includes('2'));
-
-        let helpCommands = `💡 Deliver standard order:\n<code>/send ${user.id} Email: ... | Pass: ...</code>\n\n`;
-        if (isMonthlyFxr) {
-          helpCommands += `💡 <b>Fxreplay Monthly (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
-        } else if (isTwoWeekFxr) {
-          helpCommands += `💡 <b>Fxreplay 2-Weeks (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
-        }
-        helpCommands += `💡 Or with duration (e.g. 14d, 30d):\n<code>/send ${user.id} 14d Email: ... | Pass: ...</code>\n\n` +
-                        `💡 To expire subscription anytime:\n<code>/expire ${user.id}</code>`;
-
         const captionText = "🚨 <b>NEW PAYMENT RECEIPT RECEIVED!</b>\n\n" +
                             "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
                             "🆔 User ID: <code>" + user.id + "</code>\n" +
                             "📦 Product: <b>" + session.tool + "</b>\n" +
                             "💰 Amount: <b>" + (session.finalPrice || 750) + " ETB</b>\n" +
                             "💳 Method: " + (session.method || 'Direct') + "\n\n" +
-                            helpCommands;
+                            "💡 Deliver credentials:\n" +
+                            "<code>/send " + user.id + " Email: ... | Pass: ...</code>\n\n" +
+                            "💡 Or with Auto-Expiry (e.g. 7d, 14d, 30d):\n" +
+                            "<code>/send " + user.id + " 14d Email: ... | Pass: ...</code>\n\n" +
+                            "💡 Update weekly account:\n" +
+                            "<code>/sendweek " + user.id + " 2 Email: ... | Pass: ...</code>\n\n" +
+                            "💡 To expire subscription anytime:\n" +
+                            "<code>/expire " + user.id + "</code>";
 
         await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
           caption: captionText,
