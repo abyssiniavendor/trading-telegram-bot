@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH PERSISTENT MENU KEYBOARDS & MONGODB
+// PRODUCTION SCRIPT WITH TELEGRAM MINI APP (WEB APP) & MONGODB
 // ============================================================
 
 require('dotenv').config();
@@ -13,6 +13,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniavendor";
 const MONGODB_URI = process.env.MONGODB_URI;
+const WEBAPP_URL = process.env.RENDER_EXTERNAL_URL || "https://trading-telegram-bot-e29v.onrender.com";
 
 // 📢 Required Channels that users must join
 const REQUIRED_CHANNELS = [
@@ -341,26 +342,6 @@ async function rejectPendingOrder(userId) {
 
 const userSessions = {}; // Transient checkout session
 
-// 🌐 Health check HTTP server
-const PORT = process.env.PORT || 10000;
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('A T T S Telegram Bot is LIVE 24/7!');
-});
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 HTTP Health Check Server listening on port ${PORT}`);
-});
-
-// ⏰ Safe Keep-Alive
-if (process.env.RENDER_EXTERNAL_URL) {
-  const pingUrl = process.env.RENDER_EXTERNAL_URL;
-  const client = pingUrl.startsWith('https') ? https : http;
-  setInterval(() => {
-    client.get(pingUrl, (res) => {}).on('error', () => {});
-  }, 10 * 60 * 1000);
-}
-
 // Payment Accounts
 const PAYMENT_INFO = {
   telebirr: { number: "0938652861", name: "Berihanu" },
@@ -429,12 +410,159 @@ const PRODUCTS_CATALOG = {
   }
 };
 
-// 📱 PERSISTENT BOTTOM KEYBOARD
-const BOTTOM_KEYBOARD = Markup.keyboard([
-  ['🛍️ Shop Now', '📦 My Orders'],
-  ['💳 Pricing', '🎁 Offers'],
-  ['🤝 Referral', '❓ Help & FAQ']
-]).resize().persistent();
+// 📱 TELEGRAM MINI APP (WEB APP) HTML ENGINE
+const MINI_APP_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>A T T S Store</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 16px; -webkit-tap-highlight-color: transparent; }
+    .header { text-align: center; margin-bottom: 20px; }
+    .logo { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: inline-flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; margin-bottom: 8px; }
+    .title { font-size: 20px; font-weight: 700; color: #fff; }
+    .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+    
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 16px; transition: transform 0.15s ease; }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .card-title { font-size: 16px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px; }
+    .badge { padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-blue { background: rgba(37,99,235,0.2); color: var(--accent); border: 1px solid rgba(56,189,248,0.3); }
+    .badge-green { background: rgba(22,163,74,0.2); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+    .badge-red { background: rgba(220,38,38,0.2); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+    .desc { font-size: 13px; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px; }
+    
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .btn { width: 100%; padding: 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:active { background: var(--primary-hover); transform: scale(0.98); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:active { background: #15803d; transform: scale(0.98); }
+    .btn-secondary { background: #334155; color: #fff; }
+    .btn-disabled { background: #1e293b; color: #64748b; border: 1px solid #334155; cursor: not-allowed; }
+    
+    .footer { text-align: center; margin-top: 24px; padding-bottom: 20px; font-size: 12px; color: var(--text-muted); }
+    .footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">🦅</div>
+    <h1 class="title">A T T S Store</h1>
+    <p class="subtitle">Official Abyssinia Trading Tools & Market Data Store</p>
+  </div>
+
+  <!-- Fxreplay Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🔄 Fxreplay Pro</div>
+      <span class="badge badge-green">In Stock</span>
+    </div>
+    <p class="desc">The #1 multi-timeframe backtesting engine with realistic spreads, automated trade logs & tick replay.</p>
+    <div class="btn-grid">
+      <button class="btn btn-primary" onclick="buy('fxr_monthly', 'Fxreplay Pro (Monthly)', '750 ETB')">📅 Monthly - 750 ETB</button>
+      <button class="btn btn-success" onclick="buy('fxr_twoweeks', 'Fxreplay Pro (2 Weeks)', '550 ETB')">⏳ 2 Weeks - 550 ETB</button>
+    </div>
+    <button class="btn btn-secondary" style="margin-top: 8px;" onclick="buy('fxr_weekly', 'Fxreplay Pro (Weekly)', '250 ETB')">⚡ Weekly Pass - 250 ETB</button>
+  </div>
+
+  <!-- TradingView Essential + CME -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📈 TV Essential + CME Data</div>
+      <span class="badge badge-blue">Best Seller</span>
+    </div>
+    <p class="desc">Essential charting tools paired with real-time CME market data feeds for Futures & Indices.</p>
+    <div class="btn-grid">
+      <button class="btn btn-primary" onclick="buy('tvess_1m', 'TV Essential + CME (1 Month)', '1,350 ETB')">1 Month - 1,350 ETB</button>
+      <button class="btn btn-success" onclick="buy('tvess_3m', 'TV Essential + CME (3 Months)', '3,600 ETB')">3 Months - 3,600 ETB</button>
+    </div>
+  </div>
+
+  <!-- TradingView Essential Pure -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📈 TradingView Essential</div>
+      <span class="badge badge-green">In Stock</span>
+    </div>
+    <p class="desc">Standard charting with 5 indicators per chart, unlimited saved layouts and custom timeframes.</p>
+    <div class="btn-grid">
+      <button class="btn btn-primary" onclick="buy('tvess_pure_1m', 'TradingView Essential (1 Month)', '1,100 ETB')">1 Month - 1,100 ETB</button>
+      <button class="btn btn-success" onclick="buy('tvess_pure_3m', 'TradingView Essential (3 Months)', '2,950 ETB')">3 Months - 2,950 ETB</button>
+    </div>
+  </div>
+
+  <!-- TradingView Premium (Out of Stock) -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📊 TradingView Premium</div>
+      <span class="badge badge-red">Out of Stock</span>
+    </div>
+    <p class="desc">25 indicators per chart, 8 charts per tab, and second-based intervals.</p>
+    <button class="btn btn-disabled" disabled>🚫 Restocking Soon</button>
+  </div>
+
+  <div class="footer">
+    <p>Need support? Contact <a href="https://t.me/${SUPPORT_USERNAME}">@${SUPPORT_USERNAME}</a></p>
+    <p style="margin-top: 4px;">A T T S © 2026 Abyssinia Trading</p>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.expand();
+      tg.ready();
+    }
+
+    function buy(code, name, price) {
+      if (tg) {
+        tg.sendData(JSON.stringify({ action: 'BUY', code: code, name: name, price: price }));
+        tg.close();
+      } else {
+        alert('Order for: ' + name + ' (' + price + '). Please return to chat to complete payment.');
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+// 🌐 HTTP Health Check & Web App Server
+const PORT = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+  if (req.url === '/store' || req.url === '/webapp') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(MINI_APP_HTML);
+  }
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('A T T S Telegram Bot & Mini App Server is LIVE 24/7!');
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 HTTP Health Check & Web App Server listening on port ${PORT}`);
+});
+
+// ⏰ Safe Keep-Alive
+if (process.env.RENDER_EXTERNAL_URL) {
+  const pingUrl = process.env.RENDER_EXTERNAL_URL;
+  const client = pingUrl.startsWith('https') ? https : http;
+  setInterval(() => {
+    client.get(pingUrl, (res) => {}).on('error', () => {});
+  }, 10 * 60 * 1000);
+}
 
 // Force Join Verification
 async function checkAllChannelMemberships(ctx, userId) {
@@ -466,24 +594,22 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   );
 }
 
-async function sendMainMenu(ctx) {
-  // First, ensure bottom keyboard is active
-  await ctx.reply(
-    "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
-    "Your trusted source for genuine TradingView + CME market feeds, backtesting engines, and trading analytics in Ethiopia.",
-    { parse_mode: 'HTML', ...BOTTOM_KEYBOARD }
-  );
+function sendMainMenu(ctx) {
+  const storeUrl = `${WEBAPP_URL}/store`;
 
-  // Then display the interactive inline action menu
   return ctx.reply(
-    "👇 <b>Select an option below to get started:</b>",
+    "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
+    "Your trusted source for genuine TradingView + CME market feeds, backtesting engines, and trading analytics in Ethiopia.\n\n" +
+    "Select an option below to get started:",
     {
       parse_mode: 'HTML',
+      ...Markup.removeKeyboard(), // Completely removes reply keyboard
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop Products', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-        [Markup.button.callback('💳 Official Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Special Offers', 'ACTION_OFFERS')],
-        [Markup.button.callback('🤝 Referral Program', 'ACTION_REFERRAL'), Markup.button.callback('❓ FAQ & Help', 'ACTION_FAQ')],
-        [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
+        [Markup.button.webApp('🛍️ Open ATTS Storefront', storeUrl)],
+        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
+        [Markup.button.callback('💳 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
+        [Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help & FAQ', 'ACTION_FAQ')],
+        [Markup.button.url('💬 Support', 'https://t.me/' + SUPPORT_USERNAME)]
       ])
     }
   );
@@ -662,18 +788,54 @@ bot.action('VERIFY_JOIN', async (ctx) => {
   } catch (err) {}
 });
 
-// 🛍️ Unified Action & Keyboard Handlers
-const handleShopAction = async (ctx) => {
+// 📱 Handle Telegram Web App Data Reception
+bot.on('web_app_data', (ctx) => {
+  try {
+    const data = JSON.parse(ctx.webAppData.data.text());
+    if (data.action === 'BUY') {
+      const numericPrice = parseInt(data.price.replace(/[^\d]/g, ''), 10) || 750;
+      userSessions[ctx.from.id] = {
+        productId: data.code,
+        tool: data.name,
+        planTitle: data.name,
+        finalPrice: numericPrice
+      };
+
+      ctx.reply(
+        "🧾 <b>Order Summary (Selected via Web App Store):</b>\n\n" +
+        `📦 <b>Product:</b> ${data.name}\n` +
+        `💰 <b>Total Payable:</b> ${data.price}\n\n` +
+        "Please choose your preferred payment method below:",
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
+            [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
+            [Markup.button.callback('🛍️ Back To Store', 'ACTION_SHOP')]
+          ])
+        }
+      );
+    }
+  } catch (e) {
+    console.error("Web app data parse error:", e);
+  }
+});
+
+// 🛍️ 2. SHOP NOW INLINE MENU
+bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
     if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
+    const storeUrl = `${WEBAPP_URL}/store`;
+
     ctx.reply(
       "🛍️ <b>A T T S Product Shop</b>\n\n" +
-      "Select a product below to view specifications, available plans, and instant pricing:",
+      "You can browse our full graphical Storefront or select directly from the menu below:",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
+          [Markup.button.webApp('✨ Open Full Web App Storefront', storeUrl)],
           [Markup.button.callback('📊 TradingView Premium', 'VIEW_tvprem_pure')],
           [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
           [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
@@ -685,10 +847,7 @@ const handleShopAction = async (ctx) => {
       }
     );
   } catch (err) {}
-};
-
-bot.hears(['🛍️ Shop Now', 'Shop', 'Shop Now'], handleShopAction);
-bot.action(['ACTION_SHOP', 'ACTION_BUY'], handleShopAction);
+});
 
 bot.action('VIEW_abyssinia_journal', (ctx) => {
   ctx.reply(
@@ -866,7 +1025,7 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
 });
 
 // 💳 PRICING
-const handlePricingAction = (ctx) => {
+bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   ctx.reply(
     "💳 <b>Official Pricing Overview:</b>\n\n" +
     "1. 📊 <b>TradingView Premium</b>\n   • Status: 🚫 Out of Stock\n\n" +
@@ -883,12 +1042,10 @@ const handlePricingAction = (ctx) => {
       ])
     }
   );
-};
-bot.hears(['💳 Pricing', 'Pricing'], handlePricingAction);
-bot.action(['ACTION_PRICING', 'ACTION_PRICES'], handlePricingAction);
+});
 
 // 🎁 OFFERS
-const handleOffersAction = (ctx) => {
+bot.action('ACTION_OFFERS', (ctx) => {
   ctx.reply(
     "🎁 <b>Special Season Offers:</b>\n\n" +
     "🔥 <b>TradingView Essential + CME Data</b>\nGet full real-time CME market data for only 3,600 ETB (3 Months).\n\n" +
@@ -902,12 +1059,10 @@ const handleOffersAction = (ctx) => {
       ])
     }
   );
-};
-bot.hears(['🎁 Offers', 'Offers'], handleOffersAction);
-bot.action('ACTION_OFFERS', handleOffersAction);
+});
 
 // 🤝 REFERRAL
-const handleReferralAction = async (ctx) => {
+bot.action('ACTION_REFERRAL', async (ctx) => {
   const userId = ctx.from.id;
   const botInfo = await ctx.telegram.getMe();
   const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
@@ -934,15 +1089,10 @@ const handleReferralAction = async (ctx) => {
       ])
     }
   );
-};
-bot.hears(['🤝 Referral', 'Referral'], handleReferralAction);
-bot.action('ACTION_REFERRAL', handleReferralAction);
+});
 
 // ❓ FAQ
-const handleFAQAction = (ctx) => sendFAQMenu(ctx);
-bot.hears(['❓ Help & FAQ', 'FAQ', 'Help'], handleFAQAction);
-bot.action('ACTION_FAQ', handleFAQAction);
-
+bot.action('ACTION_FAQ', (ctx) => sendFAQMenu(ctx));
 bot.action('FAQ_DELIVERY', (ctx) => ctx.reply("⏱️ <b>How long does delivery take?</b>\n\nOrders are delivered within 5 to 15 minutes after uploading your payment screenshot.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 bot.action('FAQ_PAYMENT', (ctx) => ctx.reply("💳 <b>How do I pay?</b>\n\nWe accept Telebirr (Mobile Money) and Binance Pay.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 bot.action('FAQ_OFFICIAL', (ctx) => ctx.reply("🔒 <b>Is this an official subscription?</b>\n\nYes! 100% genuine guaranteed access.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
@@ -952,7 +1102,7 @@ bot.action('FAQ_PROBLEM', (ctx) => ctx.reply("🛠️ <b>What if I have a proble
 bot.action('FAQ_SUPPORT', (ctx) => ctx.reply("📞 <b>How do I contact support?</b>\n\nDirect Telegram: @" + SUPPORT_USERNAME, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 
 // 👥 7. MY ORDERS DASHBOARD
-const handleMyOrdersAction = async (ctx) => {
+bot.action('ACTION_MY_ORDERS', async (ctx) => {
   const userId = ctx.from.id;
   const orders = await getUserOrders(userId);
   const activeOrders = orders.filter(o => o.status === 'Active');
@@ -975,9 +1125,7 @@ const handleMyOrdersAction = async (ctx) => {
       ])
     }
   );
-};
-bot.hears(['📦 My Orders', 'My Orders', 'Orders'], handleMyOrdersAction);
-bot.action('ACTION_MY_ORDERS', handleMyOrdersAction);
+});
 
 bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   const userId = ctx.from.id;
@@ -1002,9 +1150,7 @@ bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   if (activeOrders.length > 0) {
     responseText += "🟢 <b>ACTIVE SUBSCRIPTIONS:</b>\n";
     activeOrders.forEach((ord, i) => {
-      const isMultiWeek = ord.totalWeeks && ord.totalWeeks > 1;
-      const weekInfo = isMultiWeek ? ` (Week ${ord.currentWeek || 1} of ${ord.totalWeeks})` : '';
-      responseText += `<b>${i + 1}. ${ord.tool}${weekInfo}</b>\n• Status: 🟢 Active\n\n`;
+      responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟢 Active\n\n`;
     });
   }
 
@@ -1075,16 +1221,8 @@ bot.action('MY_ORDERS_KEYS', async (ctx) => {
 
   let responseText = "🔑 <b>YOUR DELIVERED ACCESS CREDENTIALS:</b>\n\n";
   orders.forEach((ord, idx) => {
-    const isMultiWeek = ord.totalWeeks && ord.totalWeeks > 1;
-    if (isMultiWeek) {
-      responseText += `<b>${idx + 1}. ${ord.tool}</b>\n` +
-                      `• 📅 <b>Active Period:</b> Week ${ord.currentWeek || 1} of ${ord.totalWeeks}\n` +
-                      `• 🔐 <b>Current Login:</b>\n<code>${ord.credentials}</code>\n` +
-                      `<i>ℹ️ Next weekly account will be updated automatically right here.</i>\n\n`;
-    } else {
-      responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
-                      `<code>${ord.credentials}</code>\n\n`;
-    }
+    responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
+                    `<code>${ord.credentials}</code>\n\n`;
   });
 
   responseText += "📂 My Orders → 🔑 My Access\n" +
@@ -1138,25 +1276,20 @@ bot.on('photo', async (ctx) => {
 
     if (ADMIN_CHAT_ID) {
       try {
-        const isMonthlyFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('month') || session.tool.toLowerCase().includes('month'));
-        const isTwoWeekFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('two') || session.tool.toLowerCase().includes('2'));
-
-        let helpCommands = `💡 Deliver standard order:\n<code>/send ${user.id} Email: ... | Pass: ...</code>\n\n`;
-        if (isMonthlyFxr) {
-          helpCommands += `💡 <b>Fxreplay Monthly (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
-        } else if (isTwoWeekFxr) {
-          helpCommands += `💡 <b>Fxreplay 2-Weeks (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
-        }
-        helpCommands += `💡 Or with duration (e.g. 14d, 30d):\n<code>/send ${user.id} 14d Email: ... | Pass: ...</code>\n\n` +
-                        `💡 To expire subscription anytime:\n<code>/expire ${user.id}</code>`;
-
         const captionText = "🚨 <b>NEW PAYMENT RECEIPT RECEIVED!</b>\n\n" +
                             "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
                             "🆔 User ID: <code>" + user.id + "</code>\n" +
                             "📦 Product: <b>" + session.tool + "</b>\n" +
                             "💰 Amount: <b>" + (session.finalPrice || 750) + " ETB</b>\n" +
                             "💳 Method: " + (session.method || 'Direct') + "\n\n" +
-                            helpCommands;
+                            "💡 Deliver credentials:\n" +
+                            "<code>/send " + user.id + " Email: ... | Pass: ...</code>\n\n" +
+                            "💡 Or with Auto-Expiry (e.g. 7d, 14d, 30d):\n" +
+                            "<code>/send " + user.id + " 14d Email: ... | Pass: ...</code>\n\n" +
+                            "💡 Update weekly account:\n" +
+                            "<code>/sendweek " + user.id + " 2 Email: ... | Pass: ...</code>\n\n" +
+                            "💡 To expire subscription anytime:\n" +
+                            "<code>/expire " + user.id + "</code>";
 
         await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
           caption: captionText,
@@ -1276,7 +1409,7 @@ async function startApplication() {
   try {
     await bot.telegram.deleteWebhook({ drop_pending_updates: false });
     await bot.launch();
-    console.log('🚀 A T T S Telegram Bot is LIVE and connected!');
+    console.log('🚀 A T T S Telegram Bot & Mini App is LIVE and connected!');
   } catch (err) {
     console.error('Bot launch error, retrying in 5s...', err.message);
     setTimeout(startApplication, 5000);
