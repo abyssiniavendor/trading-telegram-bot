@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH PERSISTENT CLOUD DATABASE & DIAGNOSTICS
+// 24/7 PRODUCTION SCRIPT WITH EXPIRY ENGINE & CLOUD MONGODB
 // ============================================================
 
 require('dotenv').config();
@@ -47,9 +47,10 @@ const OrderSchema = new mongoose.Schema({
   username: { type: String, default: 'Trader' },
   tool: { type: String, required: true },
   plan: { type: String, default: 'Standard' },
-  status: { type: String, default: 'Pending' }, // 'Pending' | 'Active' | 'Rejected'
+  status: { type: String, default: 'Pending' }, // 'Pending' | 'Active' | 'Expired' | 'Rejected'
   price: { type: String, default: 'Paid' },
   credentials: { type: String, default: '' },
+  expiresAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -75,7 +76,7 @@ const fallbackDb = {
 
 async function connectToMongo() {
   if (!MONGODB_URI) {
-    console.log("❌ WARNING: MONGODB_URI is not set in Render Environment Variables. Using temporary memory (orders will NOT persist across deploys).");
+    console.log("❌ WARNING: MONGODB_URI is not set. Using temporary memory.");
     return;
   }
 
@@ -87,13 +88,36 @@ async function connectToMongo() {
     });
     isMongoConnected = true;
     mongoErrorDetails = "Connected successfully!";
-    console.log("✅ 🟢 SUCCESS: MongoDB Cloud Database is CONNECTED & ACTIVE! Orders will be saved permanently.");
+    console.log("✅ 🟢 SUCCESS: MongoDB Cloud Database is CONNECTED & ACTIVE!");
   } catch (err) {
     isMongoConnected = false;
     mongoErrorDetails = err.message;
     console.error("❌ 🔴 MongoDB Connection Error:", err.message);
   }
 }
+
+// Check and auto-expire overdue orders periodically
+async function checkExpiredOrders() {
+  const now = new Date();
+  if (isMongoConnected) {
+    try {
+      await Order.updateMany(
+        { status: 'Active', expiresAt: { $ne: null, $lte: now } },
+        { status: 'Expired' }
+      );
+    } catch (e) {}
+  } else {
+    for (const uId in fallbackDb.userOrders) {
+      fallbackDb.userOrders[uId].forEach(o => {
+        if (o.status === 'Active' && o.expiresAt && o.expiresAt <= now) {
+          o.status = 'Expired';
+        }
+      });
+    }
+  }
+}
+
+setInterval(checkExpiredOrders, 60 * 60 * 1000); // Hourly check
 
 // DB Helpers
 async function recordUser(userId, username, referrerId = null) {
@@ -106,9 +130,7 @@ async function recordUser(userId, username, referrerId = null) {
         { upsert: true, new: true }
       );
       return;
-    } catch (e) {
-      console.error("User save error in Mongo:", e.message);
-    }
+    } catch (e) {}
   }
   fallbackDb.users.add(userId);
   if (referrerId && !fallbackDb.referrerOf[userId]) {
@@ -119,14 +141,12 @@ async function recordUser(userId, username, referrerId = null) {
 }
 
 async function getUserOrders(userId) {
+  await checkExpiredOrders();
   userId = String(userId);
   if (isMongoConnected) {
     try {
-      const orders = await Order.find({ userId }).sort({ createdAt: -1 });
-      return orders;
-    } catch (e) {
-      console.error("Get orders error:", e.message);
-    }
+      return await Order.find({ userId }).sort({ createdAt: -1 });
+    } catch (e) {}
   }
   return fallbackDb.userOrders[userId] || [];
 }
@@ -135,7 +155,7 @@ async function addPendingOrder(userId, username, tool, plan, price) {
   userId = String(userId);
   if (isMongoConnected) {
     try {
-      const newOrder = await Order.create({
+      return await Order.create({
         userId,
         username: username || '',
         tool,
@@ -144,11 +164,7 @@ async function addPendingOrder(userId, username, tool, plan, price) {
         price: `${price} ETB`,
         credentials: ''
       });
-      console.log(`✅ New order saved permanently in MongoDB (ID: ${newOrder._id})`);
-      return newOrder;
-    } catch (e) {
-      console.error("Add order Mongo error:", e.message);
-    }
+    } catch (e) {}
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
@@ -165,32 +181,31 @@ async function addPendingOrder(userId, username, tool, plan, price) {
   return tempOrd;
 }
 
-async function activateOrder(userId, customMessage) {
+async function activateOrder(userId, customMessage, durationDays = null) {
   userId = String(userId);
+  const expiresAt = durationDays ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000) : null;
+
   if (isMongoConnected) {
     try {
       const pending = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
       if (pending) {
         pending.status = 'Active';
         pending.credentials = customMessage;
+        pending.expiresAt = expiresAt;
         await pending.save();
-        console.log(`✅ Pending order activated in MongoDB for user ${userId}`);
         return pending;
       } else {
-        const created = await Order.create({
+        return await Order.create({
           userId,
           tool: 'Trading Tool Access',
-          plan: 'Standard',
+          plan: durationDays ? `${durationDays} Days` : 'Standard',
           status: 'Active',
           price: 'Paid',
-          credentials: customMessage
+          credentials: customMessage,
+          expiresAt: expiresAt
         });
-        console.log(`✅ Direct order created in MongoDB for user ${userId}`);
-        return created;
       }
-    } catch (e) {
-      console.error("Activate order Mongo error:", e.message);
-    }
+    } catch (e) {}
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
@@ -198,17 +213,41 @@ async function activateOrder(userId, customMessage) {
   if (pending) {
     pending.status = 'Active';
     pending.credentials = customMessage;
+    pending.expiresAt = expiresAt;
   } else {
     fallbackDb.userOrders[userId].unshift({
       _id: Date.now().toString(),
       userId,
       tool: 'Trading Tool Access',
-      plan: 'Standard',
+      plan: durationDays ? `${durationDays} Days` : 'Standard',
       status: 'Active',
       price: 'Paid',
-      credentials: customMessage
+      credentials: customMessage,
+      expiresAt: expiresAt
     });
   }
+}
+
+async function expireUserOrders(userId) {
+  userId = String(userId);
+  let updatedCount = 0;
+  if (isMongoConnected) {
+    try {
+      const result = await Order.updateMany(
+        { userId, status: 'Active' },
+        { status: 'Expired' }
+      );
+      updatedCount = result.modifiedCount || 0;
+    } catch (e) {}
+  } else if (fallbackDb.userOrders[userId]) {
+    fallbackDb.userOrders[userId].forEach(o => {
+      if (o.status === 'Active') {
+        o.status = 'Expired';
+        updatedCount++;
+      }
+    });
+  }
+  return updatedCount;
 }
 
 async function rejectPendingOrder(userId) {
@@ -405,12 +444,51 @@ bot.command('dbstatus', async (ctx) => {
   } else {
     return ctx.reply(
       "🔴 <b>DATABASE STATUS: TEMPORARY MEMORY (DISCONNECTED)</b>\n\n" +
-      "⚠️ <b>Why:</b> " + mongoErrorDetails + "\n\n" +
-      "💡 <b>How to fix:</b>\n" +
-      "1. Make sure <code>MONGODB_URI</code> is added in Render → Environment Variables\n" +
-      "2. In MongoDB Atlas → Network Access, make sure IP <code>0.0.0.0/0</code> is added.",
+      "⚠️ <b>Why:</b> " + mongoErrorDetails,
       { parse_mode: 'HTML' }
     );
+  }
+});
+
+// ⏳ Admin Expire Command (/expire <userId>)
+bot.command('expire', async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
+      return ctx.reply('This command is restricted to the administrator only.');
+    }
+
+    const parts = ctx.message.text.trim().split(' ');
+    if (parts.length < 2) {
+      return ctx.reply('Usage format:\n/expire <USER_ID>\n\nExample:\n/expire 5056286354');
+    }
+
+    const targetUserId = parts[1];
+    const modifiedCount = await expireUserOrders(targetUserId);
+
+    if (modifiedCount === 0) {
+      return ctx.reply(`⚠️ No active orders found for user ID: ${targetUserId}`);
+    }
+
+    // Notify Customer about Expiration
+    try {
+      await bot.telegram.sendMessage(
+        targetUserId,
+        "⏳ <b>Subscription Expired</b>\n\n" +
+        "Your trading tool subscription has expired. We hope it assisted your trading!\n\n" +
+        "To renew your subscription or choose another plan, click the shop button below:",
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🛍️ Renew / Shop Now', 'ACTION_SHOP')],
+            [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
+          ])
+        }
+      );
+    } catch (e) {}
+
+    ctx.reply(`✅ Successfully expired active subscription for user ID: ${targetUserId}. Their access keys have been removed from Active Orders.`);
+  } catch (err) {
+    ctx.reply('Error in expire command: ' + err.message);
   }
 });
 
@@ -703,7 +781,7 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
   const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
 
   let count = 0;
-  if (isMongoConnected) {
+  if (isMongoConnected && User) {
     try { count = await User.countDocuments({ referrerId: String(userId) }); } catch (e) {}
   } else {
     count = (fallbackDb.referrals[userId] || []).length;
@@ -736,7 +814,7 @@ bot.action('FAQ_EXPIRY', (ctx) => ctx.reply("⏰ <b>What happens when my subscri
 bot.action('FAQ_PROBLEM', (ctx) => ctx.reply("🛠️ <b>What if I have a problem?</b>\n\nContact support at @" + SUPPORT_USERNAME + " for fast assistance!", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 bot.action('FAQ_SUPPORT', (ctx) => ctx.reply("📞 <b>How do I contact support?</b>\n\nDirect Telegram: @" + SUPPORT_USERNAME, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 
-// 👥 7. MY ORDERS DASHBOARD (Cloud-backed, permanently stored)
+// 👥 7. MY ORDERS DASHBOARD (Hides Expired Orders From Active)
 bot.action('ACTION_MY_ORDERS', async (ctx) => {
   const userId = ctx.from.id;
   const orders = await getUserOrders(userId);
@@ -826,7 +904,7 @@ bot.action('MY_ORDERS_HISTORY', async (ctx) => {
 
   let responseText = "🕐 <b>YOUR ORDER HISTORY:</b>\n\n";
   orders.forEach((ord, idx) => {
-    const icon = ord.status === 'Active' ? '🟢' : (ord.status === 'Pending' ? '🟡' : '⚪');
+    const icon = ord.status === 'Active' ? '🟢' : (ord.status === 'Pending' ? '🟡' : (ord.status === 'Expired' ? '⏳' : '⚪'));
     responseText += `#${idx + 1} - ${ord.tool} (${icon} ${ord.status})\n`;
   });
 
@@ -839,11 +917,12 @@ bot.action('MY_ORDERS_HISTORY', async (ctx) => {
 bot.action('MY_ORDERS_KEYS', async (ctx) => {
   const userId = ctx.from.id;
   const allOrders = await getUserOrders(userId);
-  const orders = allOrders.filter(o => o.credentials && o.credentials.trim().length > 0);
+  // ONLY display credentials for ACTIVE subscriptions
+  const orders = allOrders.filter(o => o.status === 'Active' && o.credentials && o.credentials.trim().length > 0);
 
   if (orders.length === 0) {
     return ctx.reply(
-      "🔑 <b>My Access:</b>\n\nNo active credentials available yet. Once your payment receipt is approved, your access keys will appear right here.",
+      "🔑 <b>My Access:</b>\n\nNo active login credentials available. Once your order is approved, your access keys will appear here.",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
@@ -900,7 +979,7 @@ bot.action(/PAY_(.+)/, (ctx) => {
   ctx.reply(payText, { parse_mode: 'HTML' });
 });
 
-// Customer Uploads Receipt Photo -> Automatically saved in MongoDB
+// Customer Uploads Receipt Photo
 bot.on('photo', async (ctx) => {
   try {
     const user = ctx.from;
@@ -917,8 +996,12 @@ bot.on('photo', async (ctx) => {
                             "📦 Product: <b>" + session.tool + "</b>\n" +
                             "💰 Amount: <b>" + (session.finalPrice || 750) + " ETB</b>\n" +
                             "💳 Method: " + (session.method || 'Direct') + "\n\n" +
-                            "💡 To approve and send access keys, run:\n" +
-                            "<code>/send " + user.id + " Email: ... | Pass: ...</code>";
+                            "💡 Deliver credentials:\n" +
+                            "<code>/send " + user.id + " Email: ... | Pass: ...</code>\n\n" +
+                            "💡 Or with Auto-Expiry (e.g. 7, 14, 30 days):\n" +
+                            "<code>/send " + user.id + " 7d Email: ... | Pass: ...</code>\n\n" +
+                            "💡 To expire anytime later:\n" +
+                            "<code>/expire " + user.id + "</code>";
 
         await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
           caption: captionText,
@@ -939,7 +1022,7 @@ bot.on('photo', async (ctx) => {
   } catch (err) {}
 });
 
-// ✍️ Admin Deliver Credentials (/send <userId> <credentials>)
+// ✍️ Admin Deliver Credentials (/send <userId> [duration] <credentials>)
 bot.command('send', async (ctx) => {
   try {
     if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
@@ -950,11 +1033,25 @@ bot.command('send', async (ctx) => {
     const parts = messageText.split(' ');
 
     if (parts.length < 3) {
-      return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nExample:\n/send 5056286354 Email: user@vip.com | Pass: 123456');
+      return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nOr with days:\n/send <USER_ID> 7d <Credentials>');
     }
 
     const targetUserId = parts[1];
-    const customMessage = parts.slice(2).join(' ');
+    let customMessage = '';
+    let durationDays = null;
+
+    // Check if second argument is a duration like 7d, 14d, 30d
+    const possibleDuration = parts[2].toLowerCase();
+    if (/^\d+d$/.test(possibleDuration)) {
+      durationDays = parseInt(possibleDuration.replace('d', ''), 10);
+      customMessage = parts.slice(3).join(' ');
+    } else {
+      customMessage = parts.slice(2).join(' ');
+    }
+
+    if (!customMessage.trim()) {
+      return ctx.reply('Please provide the credentials message after the user ID.');
+    }
 
     const deliveryNotification = "✅ <b>Order Activated</b>\n\n" +
                                  "Your payment has been verified and your order is now active.\n\n" +
@@ -966,9 +1063,9 @@ bot.command('send', async (ctx) => {
                                  "📩 @" + SUPPORT_USERNAME;
 
     await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
-    await activateOrder(targetUserId, customMessage);
+    await activateOrder(targetUserId, customMessage, durationDays);
 
-    ctx.reply("✅ Order activated and saved permanently in database for Customer (ID: " + targetUserId + ")!");
+    ctx.reply(`✅ Order activated for Customer (ID: ${targetUserId})!${durationDays ? ` (Auto-expires in ${durationDays} days)` : ''}`);
   } catch (err) {
     ctx.reply("Delivery failed: " + err.message);
   }
@@ -983,7 +1080,7 @@ bot.command('broadcast', async (ctx) => {
     if (!text) return ctx.reply('Please include text. Example:\n/broadcast Flash deal on Fxreplay Pro!');
 
     let userList = [];
-    if (isMongoConnected) {
+    if (isMongoConnected && User) {
       const users = await User.find({}, 'userId');
       userList = users.map(u => u.userId);
     } else {
@@ -1018,7 +1115,7 @@ bot.action(/REJECT_(\d+)/, async (ctx) => {
   } catch (err) {}
 });
 
-// 🚀 Startup Sequence (Connects DB first, then launches Bot)
+// 🚀 Startup Sequence
 async function startApplication() {
   await connectToMongo();
 
