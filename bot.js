@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH CLEAN FXREPLAY TIERS & MONGODB CLOUD
+// 24/7 PRODUCTION SCRIPT WITH PERSISTENT BOTTOM KEYBOARD & CLOUD MONGODB
 // ============================================================
 
 require('dotenv').config();
@@ -217,9 +217,7 @@ async function activateOrder(userId, customMessage, durationDays = null) {
           expiresAt: expiresAt
         });
       }
-    } catch (e) {
-      console.error("Error activating order:", e.message);
-    }
+    } catch (e) {}
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
@@ -429,6 +427,13 @@ const PRODUCTS_CATALOG = {
   }
 };
 
+// 📱 PERSISTENT BOTTOM KEYBOARD (Reply Keyboard)
+const PERSISTENT_KEYBOARD = Markup.keyboard([
+  ['🛍️ Shop Now', '📦 My Orders'],
+  ['💳 Pricing', '🎁 Offers'],
+  ['🤝 Referral', '❓ Help & FAQ']
+]).resize();
+
 // Force Join Verification
 async function checkAllChannelMemberships(ctx, userId) {
   if (String(userId) === String(ADMIN_CHAT_ID)) return { allJoined: true, missing: [] };
@@ -463,14 +468,15 @@ function sendMainMenu(ctx) {
   return ctx.reply(
     "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
     "Your trusted source for genuine TradingView + CME market feeds, backtesting engines, and trading analytics in Ethiopia.\n\n" +
-    "Select an option below to get started:",
+    "Select an option below or use the menu keys:",
     {
       parse_mode: 'HTML',
+      ...PERSISTENT_KEYBOARD,
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-        [Markup.button.callback('💳 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
-        [Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help & FAQ', 'ACTION_FAQ')],
-        [Markup.button.url('💬 Support', 'https://t.me/' + SUPPORT_USERNAME)]
+        [Markup.button.callback('🛍️ Shop Products', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
+        [Markup.button.callback('💳 Official Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Special Offers', 'ACTION_OFFERS')],
+        [Markup.button.callback('🤝 Referral Program', 'ACTION_REFERRAL'), Markup.button.callback('❓ FAQ & Help', 'ACTION_FAQ')],
+        [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
       ])
     }
   );
@@ -649,8 +655,8 @@ bot.action('VERIFY_JOIN', async (ctx) => {
   } catch (err) {}
 });
 
-// 🛍️ 2. SHOP NOW
-bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
+// 🛍️ Bottom Keyboard & Action Handlers
+const handleShopAction = async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
     if (!allJoined) return sendJoinChannelMessage(ctx, missing);
@@ -672,7 +678,10 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
       }
     );
   } catch (err) {}
-});
+};
+
+bot.hears('🛍️ Shop Now', handleShopAction);
+bot.action(['ACTION_SHOP', 'ACTION_BUY'], handleShopAction);
 
 bot.action('VIEW_abyssinia_journal', (ctx) => {
   ctx.reply(
@@ -850,7 +859,7 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
 });
 
 // 💳 PRICING
-bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
+const handlePricingAction = (ctx) => {
   ctx.reply(
     "💳 <b>Official Pricing Overview:</b>\n\n" +
     "1. 📊 <b>TradingView Premium</b>\n   • Status: 🚫 Out of Stock\n\n" +
@@ -867,10 +876,12 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
       ])
     }
   );
-});
+};
+bot.hears('💳 Pricing', handlePricingAction);
+bot.action(['ACTION_PRICING', 'ACTION_PRICES'], handlePricingAction);
 
 // 🎁 OFFERS
-bot.action('ACTION_OFFERS', (ctx) => {
+const handleOffersAction = (ctx) => {
   ctx.reply(
     "🎁 <b>Special Season Offers:</b>\n\n" +
     "🔥 <b>TradingView Essential + CME Data</b>\nGet full real-time CME market data for only 3,600 ETB (3 Months).\n\n" +
@@ -884,10 +895,12 @@ bot.action('ACTION_OFFERS', (ctx) => {
       ])
     }
   );
-});
+};
+bot.hears('🎁 Offers', handleOffersAction);
+bot.action('ACTION_OFFERS', handleOffersAction);
 
 // 🤝 REFERRAL
-bot.action('ACTION_REFERRAL', async (ctx) => {
+const handleReferralAction = async (ctx) => {
   const userId = ctx.from.id;
   const botInfo = await ctx.telegram.getMe();
   const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
@@ -914,10 +927,15 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
       ])
     }
   );
-});
+};
+bot.hears('🤝 Referral', handleReferralAction);
+bot.action('ACTION_REFERRAL', handleReferralAction);
 
 // ❓ FAQ
-bot.action('ACTION_FAQ', (ctx) => sendFAQMenu(ctx));
+const handleFAQAction = (ctx) => sendFAQMenu(ctx);
+bot.hears('❓ Help & FAQ', handleFAQAction);
+bot.action('ACTION_FAQ', handleFAQAction);
+
 bot.action('FAQ_DELIVERY', (ctx) => ctx.reply("⏱️ <b>How long does delivery take?</b>\n\nOrders are delivered within 5 to 15 minutes after uploading your payment screenshot.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 bot.action('FAQ_PAYMENT', (ctx) => ctx.reply("💳 <b>How do I pay?</b>\n\nWe accept Telebirr (Mobile Money) and Binance Pay.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 bot.action('FAQ_OFFICIAL', (ctx) => ctx.reply("🔒 <b>Is this an official subscription?</b>\n\nYes! 100% genuine guaranteed access.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
@@ -927,7 +945,7 @@ bot.action('FAQ_PROBLEM', (ctx) => ctx.reply("🛠️ <b>What if I have a proble
 bot.action('FAQ_SUPPORT', (ctx) => ctx.reply("📞 <b>How do I contact support?</b>\n\nDirect Telegram: @" + SUPPORT_USERNAME, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 
 // 👥 7. MY ORDERS DASHBOARD
-bot.action('ACTION_MY_ORDERS', async (ctx) => {
+const handleMyOrdersAction = async (ctx) => {
   const userId = ctx.from.id;
   const orders = await getUserOrders(userId);
   const activeOrders = orders.filter(o => o.status === 'Active');
@@ -950,7 +968,9 @@ bot.action('ACTION_MY_ORDERS', async (ctx) => {
       ])
     }
   );
-});
+};
+bot.hears('📦 My Orders', handleMyOrdersAction);
+bot.action('ACTION_MY_ORDERS', handleMyOrdersAction);
 
 bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   const userId = ctx.from.id;
