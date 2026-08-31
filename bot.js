@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH PERSISTENT BOTTOM KEYBOARD & CLOUD MONGODB
+// 24/7 PRODUCTION SCRIPT WITH PERSISTENT MENU KEYBOARDS & MONGODB
 // ============================================================
 
 require('dotenv').config();
@@ -217,7 +217,9 @@ async function activateOrder(userId, customMessage, durationDays = null) {
           expiresAt: expiresAt
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Error activating order:", e.message);
+    }
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
@@ -427,12 +429,12 @@ const PRODUCTS_CATALOG = {
   }
 };
 
-// 📱 PERSISTENT BOTTOM KEYBOARD (Reply Keyboard)
-const PERSISTENT_KEYBOARD = Markup.keyboard([
+// 📱 PERSISTENT BOTTOM KEYBOARD
+const BOTTOM_KEYBOARD = Markup.keyboard([
   ['🛍️ Shop Now', '📦 My Orders'],
   ['💳 Pricing', '🎁 Offers'],
   ['🤝 Referral', '❓ Help & FAQ']
-]).resize();
+]).resize().persistent();
 
 // Force Join Verification
 async function checkAllChannelMemberships(ctx, userId) {
@@ -464,14 +466,19 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   );
 }
 
-function sendMainMenu(ctx) {
-  return ctx.reply(
+async function sendMainMenu(ctx) {
+  // First, ensure bottom keyboard is active
+  await ctx.reply(
     "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
-    "Your trusted source for genuine TradingView + CME market feeds, backtesting engines, and trading analytics in Ethiopia.\n\n" +
-    "Select an option below or use the menu keys:",
+    "Your trusted source for genuine TradingView + CME market feeds, backtesting engines, and trading analytics in Ethiopia.",
+    { parse_mode: 'HTML', ...BOTTOM_KEYBOARD }
+  );
+
+  // Then display the interactive inline action menu
+  return ctx.reply(
+    "👇 <b>Select an option below to get started:</b>",
     {
       parse_mode: 'HTML',
-      ...PERSISTENT_KEYBOARD,
       ...Markup.inlineKeyboard([
         [Markup.button.callback('🛍️ Shop Products', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
         [Markup.button.callback('💳 Official Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Special Offers', 'ACTION_OFFERS')],
@@ -655,7 +662,7 @@ bot.action('VERIFY_JOIN', async (ctx) => {
   } catch (err) {}
 });
 
-// 🛍️ Bottom Keyboard & Action Handlers
+// 🛍️ Unified Action & Keyboard Handlers
 const handleShopAction = async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
@@ -680,7 +687,7 @@ const handleShopAction = async (ctx) => {
   } catch (err) {}
 };
 
-bot.hears('🛍️ Shop Now', handleShopAction);
+bot.hears(['🛍️ Shop Now', 'Shop', 'Shop Now'], handleShopAction);
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], handleShopAction);
 
 bot.action('VIEW_abyssinia_journal', (ctx) => {
@@ -877,7 +884,7 @@ const handlePricingAction = (ctx) => {
     }
   );
 };
-bot.hears('💳 Pricing', handlePricingAction);
+bot.hears(['💳 Pricing', 'Pricing'], handlePricingAction);
 bot.action(['ACTION_PRICING', 'ACTION_PRICES'], handlePricingAction);
 
 // 🎁 OFFERS
@@ -896,7 +903,7 @@ const handleOffersAction = (ctx) => {
     }
   );
 };
-bot.hears('🎁 Offers', handleOffersAction);
+bot.hears(['🎁 Offers', 'Offers'], handleOffersAction);
 bot.action('ACTION_OFFERS', handleOffersAction);
 
 // 🤝 REFERRAL
@@ -928,12 +935,12 @@ const handleReferralAction = async (ctx) => {
     }
   );
 };
-bot.hears('🤝 Referral', handleReferralAction);
+bot.hears(['🤝 Referral', 'Referral'], handleReferralAction);
 bot.action('ACTION_REFERRAL', handleReferralAction);
 
 // ❓ FAQ
 const handleFAQAction = (ctx) => sendFAQMenu(ctx);
-bot.hears('❓ Help & FAQ', handleFAQAction);
+bot.hears(['❓ Help & FAQ', 'FAQ', 'Help'], handleFAQAction);
 bot.action('ACTION_FAQ', handleFAQAction);
 
 bot.action('FAQ_DELIVERY', (ctx) => ctx.reply("⏱️ <b>How long does delivery take?</b>\n\nOrders are delivered within 5 to 15 minutes after uploading your payment screenshot.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
@@ -969,7 +976,7 @@ const handleMyOrdersAction = async (ctx) => {
     }
   );
 };
-bot.hears('📦 My Orders', handleMyOrdersAction);
+bot.hears(['📦 My Orders', 'My Orders', 'Orders'], handleMyOrdersAction);
 bot.action('ACTION_MY_ORDERS', handleMyOrdersAction);
 
 bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
@@ -995,7 +1002,9 @@ bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   if (activeOrders.length > 0) {
     responseText += "🟢 <b>ACTIVE SUBSCRIPTIONS:</b>\n";
     activeOrders.forEach((ord, i) => {
-      responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟢 Active\n\n`;
+      const isMultiWeek = ord.totalWeeks && ord.totalWeeks > 1;
+      const weekInfo = isMultiWeek ? ` (Week ${ord.currentWeek || 1} of ${ord.totalWeeks})` : '';
+      responseText += `<b>${i + 1}. ${ord.tool}${weekInfo}</b>\n• Status: 🟢 Active\n\n`;
     });
   }
 
@@ -1066,8 +1075,16 @@ bot.action('MY_ORDERS_KEYS', async (ctx) => {
 
   let responseText = "🔑 <b>YOUR DELIVERED ACCESS CREDENTIALS:</b>\n\n";
   orders.forEach((ord, idx) => {
-    responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
-                    `<code>${ord.credentials}</code>\n\n`;
+    const isMultiWeek = ord.totalWeeks && ord.totalWeeks > 1;
+    if (isMultiWeek) {
+      responseText += `<b>${idx + 1}. ${ord.tool}</b>\n` +
+                      `• 📅 <b>Active Period:</b> Week ${ord.currentWeek || 1} of ${ord.totalWeeks}\n` +
+                      `• 🔐 <b>Current Login:</b>\n<code>${ord.credentials}</code>\n` +
+                      `<i>ℹ️ Next weekly account will be updated automatically right here.</i>\n\n`;
+    } else {
+      responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
+                      `<code>${ord.credentials}</code>\n\n`;
+    }
   });
 
   responseText += "📂 My Orders → 🔑 My Access\n" +
@@ -1121,20 +1138,25 @@ bot.on('photo', async (ctx) => {
 
     if (ADMIN_CHAT_ID) {
       try {
+        const isMonthlyFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('month') || session.tool.toLowerCase().includes('month'));
+        const isTwoWeekFxr = session.tool.toLowerCase().includes('fxreplay') && (session.planTitle.toLowerCase().includes('two') || session.tool.toLowerCase().includes('2'));
+
+        let helpCommands = `💡 Deliver standard order:\n<code>/send ${user.id} Email: ... | Pass: ...</code>\n\n`;
+        if (isMonthlyFxr) {
+          helpCommands += `💡 <b>Fxreplay Monthly (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
+        } else if (isTwoWeekFxr) {
+          helpCommands += `💡 <b>Fxreplay 2-Weeks (Send Week 1):</b>\n<code>/sendweek ${user.id} 1 Email: ... | Pass: ...</code>\n\n`;
+        }
+        helpCommands += `💡 Or with duration (e.g. 14d, 30d):\n<code>/send ${user.id} 14d Email: ... | Pass: ...</code>\n\n` +
+                        `💡 To expire subscription anytime:\n<code>/expire ${user.id}</code>`;
+
         const captionText = "🚨 <b>NEW PAYMENT RECEIPT RECEIVED!</b>\n\n" +
                             "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
                             "🆔 User ID: <code>" + user.id + "</code>\n" +
                             "📦 Product: <b>" + session.tool + "</b>\n" +
                             "💰 Amount: <b>" + (session.finalPrice || 750) + " ETB</b>\n" +
                             "💳 Method: " + (session.method || 'Direct') + "\n\n" +
-                            "💡 Deliver credentials:\n" +
-                            "<code>/send " + user.id + " Email: ... | Pass: ...</code>\n\n" +
-                            "💡 Or with Auto-Expiry (e.g. 7d, 14d, 30d):\n" +
-                            "<code>/send " + user.id + " 14d Email: ... | Pass: ...</code>\n\n" +
-                            "💡 Update weekly account:\n" +
-                            "<code>/sendweek " + user.id + " 2 Email: ... | Pass: ...</code>\n\n" +
-                            "💡 To expire subscription anytime:\n" +
-                            "<code>/expire " + user.id + "</code>";
+                            helpCommands;
 
         await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
           caption: captionText,
