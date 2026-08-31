@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// FULL-FEATURED TELEGRAM MINI APP WITH IN-APP CHECKOUT & MONGODB
+// PRODUCTION SCRIPT WITH CHANNEL POST FILTER & IN-APP CHECKOUT
 // ============================================================
 
 require('dotenv').config();
@@ -218,9 +218,7 @@ async function activateOrder(userId, customMessage, durationDays = null) {
           expiresAt: expiresAt
         });
       }
-    } catch (e) {
-      console.error("Error activating order:", e.message);
-    }
+    } catch (e) {}
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
@@ -623,6 +621,14 @@ if (process.env.RENDER_EXTERNAL_URL) {
     client.get(pingUrl, (res) => {}).on('error', () => {});
   }, 10 * 60 * 1000);
 }
+
+// 🛡️ Middleware: Ignore Channel & Group Posts (Only handle private chats)
+bot.use((ctx, next) => {
+  if (ctx.channelPost || (ctx.chat && ctx.chat.type !== 'private')) {
+    return; // Silently ignore channel and group messages
+  }
+  return next();
+});
 
 // Force Join Verification
 async function checkAllChannelMemberships(ctx, userId) {
@@ -1292,9 +1298,12 @@ bot.action(/PAY_(.+)/, (ctx) => {
   ctx.reply(payText, { parse_mode: 'HTML' });
 });
 
-// Customer Uploads Receipt Photo
+// Customer Uploads Receipt Photo (ONLY in Private Chat)
 bot.on('photo', async (ctx) => {
   try {
+    // Strict Guard: Never process channel or group posts
+    if (ctx.chat.type !== 'private') return;
+
     const user = ctx.from;
     const session = userSessions[user.id] || { tool: 'Trading Tool Access', finalPrice: 750, method: 'Direct', planTitle: 'Standard' };
     const photo = ctx.message.photo.pop();
