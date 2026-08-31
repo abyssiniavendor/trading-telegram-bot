@@ -1,17 +1,18 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH PERSISTENT STORAGE & CLEAN HTML
+// 24/7 PRODUCTION SCRIPT WITH CLOUD MONGODB PERMANENT DATABASE
 // ============================================================
 
 require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
+const https = require('https');
+const mongoose = require('mongoose');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniavendor";
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // 📢 Required Channels that users must join
 const REQUIRED_CHANNELS = [
@@ -40,54 +41,179 @@ process.on('uncaughtException', (err) => {
   console.error('⚠️ Uncaught Exception caught safely:', err.message);
 });
 
-// 📁 PERSISTENT FILE DATABASE (Saves orders permanently on disk)
-const DATA_DIR = path.join(__dirname, 'data');
-if (!fs.existsSync(DATA_DIR)) {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
-}
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+// 📁 PERMANENT MONGODB SCHEMA & MODEL
+const OrderSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  username: { type: String, default: 'Trader' },
+  tool: { type: String, required: true },
+  plan: { type: String, default: 'Standard' },
+  status: { type: String, default: 'Pending' }, // 'Pending' | 'Active' | 'Rejected'
+  price: { type: String, default: 'Paid' },
+  credentials: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now }
+});
 
-function loadDatabase() {
-  const defaultDb = {
-    users: [],
-    userOrders: {},
-    referrals: {},
-    referrerOf: {},
-    ordersCount: 0,
-    totalRevenue: 0
-  };
+const UserSchema = new mongoose.Schema({
+  userId: { type: String, required: true, unique: true },
+  username: { type: String, default: '' },
+  referrerId: { type: String, default: null },
+  createdAt: { type: Date, default: Date.now }
+});
 
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const raw = fs.readFileSync(DB_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      return {
-        ...defaultDb,
-        ...parsed,
-        users: new Set(parsed.users || [])
-      };
+let Order, User;
+let isMongoConnected = false;
+
+// Fallback in-memory DB if MongoDB URL is not configured yet
+const fallbackDb = {
+  users: new Set(),
+  userOrders: {},
+  referrerOf: {},
+  referrals: {}
+};
+
+async function initDatabase() {
+  if (MONGODB_URI) {
+    try {
+      await mongoose.connect(MONGODB_URI);
+      Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
+      User = mongoose.models.User || mongoose.model('User', UserSchema);
+      isMongoConnected = true;
+      console.log('✅ Connected to MongoDB Cloud Database (Permanent Storage Active)!');
+    } catch (err) {
+      console.error('⚠️ MongoDB Connection Failed, using fallback:', err.message);
     }
-  } catch (err) {
-    console.error("Error reading database file, using fallback:", err.message);
-  }
-
-  return { ...defaultDb, users: new Set() };
-}
-
-const db = loadDatabase();
-const userSessions = {}; // Transient session state for current checkout
-
-function saveDatabase() {
-  try {
-    const toSave = {
-      ...db,
-      users: Array.from(db.users)
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(toSave, null, 2), 'utf8');
-  } catch (err) {
-    console.error("Failed to save database to disk:", err.message);
+  } else {
+    console.log('ℹ️ Running without MONGODB_URI. (Add MONGODB_URI in Render to persist across updates)');
   }
 }
+
+initDatabase();
+
+// DB Helper Functions
+async function recordUser(userId, username, referrerId = null) {
+  userId = String(userId);
+  if (isMongoConnected && User) {
+    try {
+      await User.findOneAndUpdate(
+        { userId },
+        { userId, username: username || '', ...(referrerId ? { referrerId } : {}) },
+        { upsert: true, new: true }
+      );
+    } catch (e) {}
+  } else {
+    fallbackDb.users.add(userId);
+    if (referrerId && !fallbackDb.referrerOf[userId]) {
+      fallbackDb.referrerOf[userId] = referrerId;
+      if (!fallbackDb.referrals[referrerId]) fallbackDb.referrals[referrerId] = [];
+      fallbackDb.referrals[referrerId].push(userId);
+    }
+  }
+}
+
+async function getUserOrders(userId) {
+  userId = String(userId);
+  if (isMongoConnected && Order) {
+    try {
+      return await Order.find({ userId }).sort({ createdAt: -1 });
+    } catch (e) {
+      return [];
+    }
+  }
+  return fallbackDb.userOrders[userId] || [];
+}
+
+async function addPendingOrder(userId, username, tool, plan, price) {
+  userId = String(userId);
+  if (isMongoConnected && Order) {
+    try {
+      return await Order.create({
+        userId,
+        username: username || '',
+        tool,
+        plan,
+        status: 'Pending',
+        price: `${price} ETB`,
+        credentials: ''
+      });
+    } catch (e) {
+      console.error('Error creating MongoDB order:', e.message);
+    }
+  }
+
+  if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
+  const newOrd = {
+    _id: Date.now().toString(),
+    userId,
+    tool,
+    plan,
+    status: 'Pending',
+    price: `${price} ETB`,
+    credentials: ''
+  };
+  fallbackDb.userOrders[userId].unshift(newOrd);
+  return newOrd;
+}
+
+async function activateOrder(userId, customMessage) {
+  userId = String(userId);
+  if (isMongoConnected && Order) {
+    try {
+      const pending = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
+      if (pending) {
+        pending.status = 'Active';
+        pending.credentials = customMessage;
+        await pending.save();
+        return pending;
+      } else {
+        return await Order.create({
+          userId,
+          tool: 'Trading Tool Access',
+          plan: 'Standard',
+          status: 'Active',
+          price: 'Paid',
+          credentials: customMessage
+        });
+      }
+    } catch (e) {
+      console.error('Error updating order:', e.message);
+    }
+  }
+
+  if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
+  const pending = fallbackDb.userOrders[userId].find(o => o.status === 'Pending');
+  if (pending) {
+    pending.status = 'Active';
+    pending.credentials = customMessage;
+  } else {
+    fallbackDb.userOrders[userId].unshift({
+      _id: Date.now().toString(),
+      userId,
+      tool: 'Trading Tool Access',
+      plan: 'Standard',
+      status: 'Active',
+      price: 'Paid',
+      credentials: customMessage
+    });
+  }
+}
+
+async function rejectPendingOrder(userId) {
+  userId = String(userId);
+  if (isMongoConnected && Order) {
+    try {
+      await Order.findOneAndUpdate(
+        { userId, status: 'Pending' },
+        { status: 'Rejected' },
+        { sort: { createdAt: -1 } }
+      );
+    } catch (e) {}
+  } else if (fallbackDb.userOrders[userId]) {
+    const pending = fallbackDb.userOrders[userId].find(o => o.status === 'Pending');
+    if (pending) pending.status = 'Rejected';
+  }
+}
+
+const userSessions = {}; // Transient checkout session
 
 // 🌐 Health check HTTP server for Render.com
 const PORT = process.env.PORT || 10000;
@@ -100,14 +226,14 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 HTTP Health Check Server listening on port ${PORT}`);
 });
 
-// ⏰ Self-Ping Keep-Alive
+// ⏰ Safe HTTPS Self-Ping Keep-Alive
 if (process.env.RENDER_EXTERNAL_URL) {
+  const pingUrl = process.env.RENDER_EXTERNAL_URL;
+  const client = pingUrl.startsWith('https') ? https : http;
   setInterval(() => {
-    http.get(process.env.RENDER_EXTERNAL_URL, (res) => {
+    client.get(pingUrl, (res) => {
       console.log(`🔄 Self-ping keep-alive status: ${res.statusCode}`);
-    }).on('error', (err) => {
-      console.log('Self-ping error (benign):', err.message);
-    });
+    }).on('error', () => {});
   }, 10 * 60 * 1000);
 }
 
@@ -129,38 +255,18 @@ const PRODUCTS_CATALOG = {
     id: "tvprem_pure",
     title: "📊 TradingView Premium",
     tagline: "Top tier TradingView plan with 25 indicators, 8 charts/tab, and second intervals.",
-    badge: "Out of Stock",
-    outOfStock: true,
-    features: [
-      "25 indicators per chart layout",
-      "8 charts in one layout",
-      "400 price alerts & 400 technical alerts",
-      "Second-based bar replay"
-    ]
+    outOfStock: true
   },
   "tvprem": {
     id: "tvprem",
     title: "📊 TradingView Premium + CME Data",
     tagline: "Top tier package with official CME Real-Time market data feed.",
-    badge: "Out of Stock",
-    outOfStock: true,
-    features: [
-      "Highest plan: 25 indicators per chart layout",
-      "Official Real-Time CME Group data (ES, NQ, YM, GC, CL)",
-      "8 simultaneous charts per tab layout"
-    ]
+    outOfStock: true
   },
   "tvess_pure": {
     id: "tvess_pure",
     title: "📈 TradingView Essential",
     tagline: "Essential charting plan with 5 indicators and 2 charts per layout.",
-    badge: "Active",
-    features: [
-      "5 indicators per chart layout",
-      "2 charts in one layout",
-      "20 active price alerts & technical alerts",
-      "Ad-free charting with Bar Replay"
-    ],
     plans: {
       "1m": { name: "1 Month Access", price: 1100 },
       "3m": { name: "3 Months Access", price: 2950, discountNote: "Save 350 ETB" },
@@ -171,14 +277,6 @@ const PRODUCTS_CATALOG = {
     id: "tvess",
     title: "📈 TradingView Essential + CME Data",
     tagline: "Essential charting power combined with real-time CME futures data.",
-    badge: "Best Value",
-    features: [
-      "5 indicators per chart layout",
-      "Official Real-Time CME Group data included",
-      "2 charts per tab layout",
-      "20 active price alerts & technical alerts",
-      "Clean ad-free charts with Bar Replay"
-    ],
     plans: {
       "1m": { name: "1 Month Access", price: 1350 },
       "3m": { name: "3 Months Access", price: 3600, discountNote: "Save 450 ETB" },
@@ -189,7 +287,6 @@ const PRODUCTS_CATALOG = {
     id: "fxr",
     title: "🔄 Fxreplay Pro",
     tagline: "The premier backtesting platform for Forex, Crypto & Futures traders.",
-    badge: "Trader Choice",
     features: [
       "True multi-timeframe backtesting engine",
       "Realistic simulated broker fills & spreads",
@@ -233,22 +330,15 @@ async function checkAllChannelMemberships(ctx, userId) {
     try {
       const member = await ctx.telegram.getChatMember(ch.username, userId);
       const isMember = ['member', 'administrator', 'creator'].includes(member.status);
-      if (!isMember) {
-        missing.push(ch);
-      }
+      if (!isMember) missing.push(ch);
     } catch (err) {}
   }
-
   return { allJoined: missing.length === 0, missing };
 }
 
-// 🚫 Force Join Prompt Message
 function sendJoinChannelMessage(ctx, missingChannels) {
   const channelList = missingChannels && missingChannels.length > 0 ? missingChannels : REQUIRED_CHANNELS;
-  const channelButtons = channelList.map(ch => [
-    Markup.button.url('📢 Join ' + ch.name, ch.url)
-  ]);
-
+  const channelButtons = channelList.map(ch => [Markup.button.url('📢 Join ' + ch.name, ch.url)]);
   channelButtons.push([Markup.button.callback('✅ I Have Joined All Channels (Verify)', 'VERIFY_JOIN')]);
 
   return ctx.reply(
@@ -262,7 +352,6 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   );
 }
 
-// 🏠 Main Menu Builder
 function sendMainMenu(ctx) {
   return ctx.reply(
     "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
@@ -280,7 +369,6 @@ function sendMainMenu(ctx) {
   );
 }
 
-// ❓ FAQ Menu Builder
 function sendFAQMenu(ctx) {
   return ctx.reply(
     "❓ <b>FREQUENTLY ASKED QUESTIONS (FAQ)</b>\n\n" +
@@ -305,19 +393,15 @@ function sendFAQMenu(ctx) {
 bot.start(async (ctx) => {
   try {
     const userId = ctx.from.id;
-    db.users.add(userId);
-
     const startPayload = ctx.message.text.split(' ')[1];
-    if (startPayload && startPayload.startsWith('ref_')) {
-      const referrerId = startPayload.replace('ref_', '');
-      if (referrerId !== String(userId) && !db.referrerOf[userId]) {
-        db.referrerOf[userId] = referrerId;
-        if (!db.referrals[referrerId]) db.referrals[referrerId] = [];
-        db.referrals[referrerId].push(userId);
+    let refId = null;
 
+    if (startPayload && startPayload.startsWith('ref_')) {
+      refId = startPayload.replace('ref_', '');
+      if (refId !== String(userId)) {
         try {
           await bot.telegram.sendMessage(
-            referrerId,
+            refId,
             "🎉 <b>New trader joined via your referral link!</b>\n\nUser: @" + (ctx.from.username || 'Trader') + "\nYou will receive a 100 ETB bonus upon their first purchase!",
             { parse_mode: 'HTML' }
           );
@@ -325,19 +409,17 @@ bot.start(async (ctx) => {
       }
     }
 
-    saveDatabase();
+    await recordUser(userId, ctx.from.username, refId);
 
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, userId);
-    if (!allJoined) {
-      return sendJoinChannelMessage(ctx, missing);
-    }
+    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
+
     return sendMainMenu(ctx);
   } catch (err) {
-    console.error("Error in start handler:", err);
+    console.error("Error in start:", err);
   }
 });
 
-// Verify Channel Join Callback
 bot.action('VERIFY_JOIN', async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
@@ -347,14 +429,12 @@ bot.action('VERIFY_JOIN', async (ctx) => {
       return sendMainMenu(ctx);
     } else {
       const remaining = missing.map(m => m.username).join(', ');
-      return ctx.answerCbQuery("❌ Please join all 3 channels first! Remaining: " + remaining, { show_alert: true });
+      return ctx.answerCbQuery("❌ Please join all channels first! Remaining: " + remaining, { show_alert: true });
     }
-  } catch (err) {
-    console.error("Error in verify callback:", err);
-  }
+  } catch (err) {}
 });
 
-// 🛍️ 2. SHOP NOW / PRODUCT CATALOG
+// 🛍️ 2. SHOP NOW
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
@@ -376,18 +456,15 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
         ])
       }
     );
-  } catch (err) {
-    console.error("Error in shop action:", err);
-  }
+  } catch (err) {}
 });
 
-// Abyssinia Journal - Coming Soon Handler
 bot.action('VIEW_abyssinia_journal', (ctx) => {
   ctx.reply(
     "📓 <b>Abyssinia Journal</b>\n\n" +
     "✨ <i>Coming soon!</i>\n\n" +
-    "Our proprietary automated trade journaling, risk management, and equity curve tracking system is currently in final testing.\n\n" +
-    "📢 Stay tuned and keep updated on our official channel @abyssiniatradinget for the launch date!",
+    "Our automated trade journaling, risk management, and equity tracker is currently in final testing.\n\n" +
+    "📢 Stay tuned on our official channel @abyssiniatradinget for the launch date!",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -399,25 +476,17 @@ bot.action('VIEW_abyssinia_journal', (ctx) => {
   );
 });
 
-// Dedicated Product Page View
 bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
   try {
-    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
-    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
-
     const prodKey = ctx.match[1];
     const product = PRODUCTS_CATALOG[prodKey];
+    if (!product) return ctx.reply("Product not found.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
 
-    if (!product) {
-      return ctx.reply("Product not found. Please return to Shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
-    }
-
-    // Out of Stock Handling
     if (product.outOfStock) {
       return ctx.reply(
         `<b>${product.title}</b>\n\n` +
         "🚫 <b>STATUS: OUT OF STOCK</b>\n\n" +
-        "We are currently restocking this subscription package. Subscription slots will be available soon!\n\n" +
+        "We are currently restocking this subscription package.\n\n" +
         "📢 Keep updated on our official channel @abyssiniatradinget for instant restock announcements!",
         {
           parse_mode: 'HTML',
@@ -430,7 +499,6 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
       );
     }
 
-    // Hierarchical Tier Menu for Fxreplay Pro
     if (prodKey === 'fxr') {
       let descText = `<b>${product.title}</b>\n` +
                      `${product.tagline}\n\n` +
@@ -447,18 +515,14 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
       return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
     }
 
-    // Standard Plans Display for TradingView Essential
     let descText = `<b>${product.title}</b>\n` +
                    `${product.tagline}\n\n` +
-                   `✨ <b>Key Features:</b>\n` +
-                   product.features.map(f => `• ${f}`).join('\n') +
-                   `\n\n💳 <b>Available Subscription Plans:</b>\n`;
+                   `💳 <b>Available Subscription Plans:</b>\n`;
 
     const planButtons = Object.keys(product.plans).map(planCode => {
       const plan = product.plans[planCode];
       const note = plan.discountNote ? " (" + plan.discountNote + ")" : "";
-      const label = "👉 " + plan.name + " — " + plan.price + " ETB" + note;
-      return [Markup.button.callback(label, "PLAN:" + prodKey + ":" + planCode)];
+      return [Markup.button.callback(`👉 ${plan.name} — ${plan.price} ETB${note}`, `PLAN:${prodKey}:${planCode}`)];
     });
 
     planButtons.push([
@@ -467,20 +531,13 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
     ]);
 
     ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(planButtons) });
-  } catch (err) {
-    console.error("Error in view product:", err);
-  }
+  } catch (err) {}
 });
 
-// Fxreplay Pro Tier Options View: FXR_TIER_<tierKey>
 bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
   try {
     const tierKey = ctx.match[1];
-    const product = PRODUCTS_CATALOG['fxr'];
-    const tier = product.tiers[tierKey];
-
-    let descText = `🔄 <b>Fxreplay Pro — ${tier.name}</b>\n\n` +
-                   `Please select the package configuration you want:`;
+    const tier = PRODUCTS_CATALOG['fxr'].tiers[tierKey];
 
     const optionButtons = tier.options.map(opt => [
       Markup.button.callback(`👉 ${opt.name} - ${opt.price}birr`, `FXR_OPT_${opt.code}`)
@@ -491,13 +548,13 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
       Markup.button.callback('🛍️ Shop', 'ACTION_SHOP')
     ]);
 
-    ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(optionButtons) });
-  } catch (err) {
-    console.error("Error in fxr tier action:", err);
-  }
+    ctx.reply(`🔄 <b>Fxreplay Pro — ${tier.name}</b>\n\nPlease select the package configuration you want:`, {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard(optionButtons)
+    });
+  } catch (err) {}
 });
 
-// Fxreplay Pro Option Selected -> Order Summary & Payment
 bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
   try {
     const optCode = ctx.match[1];
@@ -514,9 +571,7 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
       }
     }
 
-    if (!selectedOpt) {
-      return ctx.reply("Option error. Please return to shop.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
-    }
+    if (!selectedOpt) return ctx.reply("Option error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
 
     userSessions[ctx.from.id] = {
       productId: 'fxr',
@@ -542,24 +597,17 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
         ])
       }
     );
-  } catch (err) {
-    console.error("Error in fxr opt action:", err);
-  }
+  } catch (err) {}
 });
 
-// Select Plan & Proceed to Checkout for other products (TradingView)
 bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ctx) => {
   try {
     const prodKey = ctx.match[1];
     const planCode = ctx.match[2];
     const product = PRODUCTS_CATALOG[prodKey];
-
-    if (!product || !product.plans || !product.plans[planCode]) {
-      return ctx.reply("Product plan selection error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
-    }
+    if (!product || !product.plans || !product.plans[planCode]) return ctx.reply("Plan error.");
 
     const plan = product.plans[planCode];
-
     userSessions[ctx.from.id] = {
       productId: prodKey,
       planKey: planCode,
@@ -583,31 +631,19 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
         ])
       }
     );
-  } catch (err) {
-    console.error("Error in plan select:", err);
-  }
+  } catch (err) {}
 });
 
-// 💳 3. PRICING OVERVIEW
+// 💳 PRICING
 bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   ctx.reply(
     "💳 <b>Official Pricing Overview:</b>\n\n" +
-    "1. 📊 <b>TradingView Premium</b>\n" +
-    "   • Status: 🚫 Out of Stock (Check @abyssiniatradinget)\n\n" +
-    "2. 📊 <b>TradingView Premium + CME Data</b>\n" +
-    "   • Status: 🚫 Out of Stock (Check @abyssiniatradinget)\n\n" +
-    "3. 📈 <b>TradingView Essential</b>\n" +
-    "   • 1 Month: 1,100 ETB\n" +
-    "   • 3 Months: 2,950 ETB\n\n" +
-    "4. 📈 <b>TradingView Essential + CME Data</b>\n" +
-    "   • 1 Month: 1,350 ETB\n" +
-    "   • 3 Months: 3,600 ETB\n\n" +
-    "5. 🔄 <b>Fxreplay Pro</b>\n" +
-    "   • Monthly Plans: From 750 ETB\n" +
-    "   • Two Weeks Plans: From 550 ETB\n" +
-    "   • Weekly Plans: From 250 ETB\n\n" +
-    "6. 📓 <b>Abyssinia Journal</b>\n" +
-    "   • Status: ✨ Coming Soon!",
+    "1. 📊 <b>TradingView Premium</b>\n   • Status: 🚫 Out of Stock\n\n" +
+    "2. 📊 <b>TradingView Premium + CME Data</b>\n   • Status: 🚫 Out of Stock\n\n" +
+    "3. 📈 <b>TradingView Essential</b>\n   • 1 Month: 1,100 ETB\n   • 3 Months: 2,950 ETB\n\n" +
+    "4. 📈 <b>TradingView Essential + CME Data</b>\n   • 1 Month: 1,350 ETB\n   • 3 Months: 3,600 ETB\n\n" +
+    "5. 🔄 <b>Fxreplay Pro</b>\n   • Monthly Plans: From 750 ETB\n   • Two Weeks Plans: From 550 ETB\n   • Weekly Plans: From 250 ETB\n\n" +
+    "6. 📓 <b>Abyssinia Journal</b>\n   • Status: ✨ Coming Soon!",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -618,16 +654,13 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   );
 });
 
-// 🎁 4. SPECIAL OFFERS VIEW
+// 🎁 OFFERS
 bot.action('ACTION_OFFERS', (ctx) => {
   ctx.reply(
     "🎁 <b>Special Season Offers:</b>\n\n" +
-    "🔥 <b>TradingView Essential + CME Data</b>\n" +
-    "Get full real-time CME market data with 3-month savings for only 3,600 ETB.\n\n" +
-    "🔥 <b>Fxreplay Pro Multi-Timeframe Packs</b>\n" +
-    "Get full backtesting access with weekly, 2-week, or monthly plans starting at just 250 ETB.\n\n" +
-    "🔥 <b>Abyssinia Journal Launch Special</b>\n" +
-    "Coming soon with early bird lifetime pricing for our channel members!",
+    "🔥 <b>TradingView Essential + CME Data</b>\nGet full real-time CME market data for only 3,600 ETB (3 Months).\n\n" +
+    "🔥 <b>Fxreplay Pro Multi-Timeframe Packs</b>\nFull backtesting access starting at just 250 ETB.\n\n" +
+    "🔥 <b>Abyssinia Journal Launch Special</b>\nComing soon with early bird pricing!",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -638,143 +671,50 @@ bot.action('ACTION_OFFERS', (ctx) => {
   );
 });
 
-// 🤝 5. REFERRAL PROGRAM
+// 🤝 REFERRAL
 bot.action('ACTION_REFERRAL', async (ctx) => {
-  try {
-    const userId = ctx.from.id;
-    const botInfo = await ctx.telegram.getMe();
-    const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
-    const count = (db.referrals[userId] || []).length;
-
-    ctx.reply(
-      "🤝 <b>Partner & Referral Program (Invite & Earn):</b>\n\n" +
-      "Invite fellow traders and earn 100 ETB Commission for every purchase they make!\n\n" +
-      "📊 <b>Your Performance:</b>\n" +
-      "• Traders Invited: " + count + " people\n" +
-      "• Commission Balance: " + (count * 100) + " ETB\n\n" +
-      "🔗 <b>Your Unique Referral Link:</b>\n" + refLink,
-      {
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard([
-          [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView and Fxreplay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
-          [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
-        ])
-      }
-    );
-  } catch (err) {
-    console.error("Error in referral action:", err);
-  }
-});
-
-// ❓ 6. FAQ HANDLERS
-bot.action('ACTION_FAQ', (ctx) => sendFAQMenu(ctx));
-
-bot.action('FAQ_DELIVERY', (ctx) => {
-  ctx.reply(
-    "⏱️ <b>How long does delivery take?</b>\n\n" +
-    "Orders are processed rapidly within 5 to 15 minutes after uploading your payment screenshot. Our team verifies your transaction and sends your private login credentials right here in this bot!",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-      ])
-    }
-  );
-});
-
-bot.action('FAQ_PAYMENT', (ctx) => {
-  ctx.reply(
-    "💳 <b>How do I pay?</b>\n\n" +
-    "We accept two convenient payment methods:\n" +
-    "1. Telebirr (Instant Mobile Money)\n" +
-    "2. Binance Pay for crypto & USDT.\n\n" +
-    "Account details and copyable numbers will be shown automatically during checkout.",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-      ])
-    }
-  );
-});
-
-bot.action('FAQ_OFFICIAL', (ctx) => {
-  ctx.reply(
-    "🔒 <b>Is this an official subscription?</b>\n\n" +
-    "Yes! All TradingView and Fxreplay Pro accounts are 100% genuine, private, and backed by our full-term warranty guarantee.",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-      ])
-    }
-  );
-});
-
-bot.action('FAQ_CHANGE_ACC', (ctx) => {
-  ctx.reply(
-    "🔄 <b>Can I change my account?</b>\n\n" +
-    "Yes, if you need customized email credentials or want your subscription linked to a specific setup, simply notify our support team right after ordering.",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-        [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
-      ])
-    }
-  );
-});
-
-bot.action('FAQ_EXPIRY', (ctx) => {
-  ctx.reply(
-    "⏰ <b>What happens when my subscription expires?</b>\n\n" +
-    "You will receive an automated 1-click renewal reminder before expiration so your charting or backtesting setups never get interrupted.",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('❓ More FAQs', 'ACTION_FAQ')],
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]
-      ])
-    }
-  );
-});
-
-bot.action('FAQ_PROBLEM', (ctx) => {
-  ctx.reply(
-    "🛠️ <b>What if I have a problem?</b>\n\n" +
-    "We offer dedicated customer assistance. If you ever experience an issue with login or setups, we resolve or replace it promptly!",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('💬 Talk To Support', 'https://t.me/' + SUPPORT_USERNAME)],
-        [Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]
-      ])
-    }
-  );
-});
-
-bot.action('FAQ_SUPPORT', (ctx) => {
-  ctx.reply(
-    "📞 <b>How do I contact support?</b>\n\n" +
-    "You can reach our official team directly via Telegram:\n" +
-    "👉 @" + SUPPORT_USERNAME,
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('💬 Open Support Chat', 'https://t.me/' + SUPPORT_USERNAME)],
-        [Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]
-      ])
-    }
-  );
-});
-
-// 👥 7. MY ORDERS DASHBOARD (No confusing dates)
-bot.action('ACTION_MY_ORDERS', (ctx) => {
   const userId = ctx.from.id;
-  const orders = db.userOrders[userId] || [];
+  const botInfo = await ctx.telegram.getMe();
+  const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
+
+  let count = 0;
+  if (isMongoConnected && User) {
+    try { count = await User.countDocuments({ referrerId: String(userId) }); } catch (e) {}
+  } else {
+    count = (fallbackDb.referrals[userId] || []).length;
+  }
+
+  ctx.reply(
+    "🤝 <b>Partner & Referral Program (Invite & Earn):</b>\n\n" +
+    "Invite fellow traders and earn 100 ETB Commission for every purchase they make!\n\n" +
+    "📊 <b>Your Performance:</b>\n" +
+    "• Traders Invited: " + count + " people\n" +
+    "• Commission Balance: " + (count * 100) + " ETB\n\n" +
+    "🔗 <b>Your Unique Referral Link:</b>\n" + refLink,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.url('📢 Share Link On Telegram', "https://t.me/share/url?url=" + encodeURIComponent(refLink) + "&text=" + encodeURIComponent('Get genuine TradingView and Fxreplay Pro in Ethiopia instantly via Telebirr & Binance on A T T S!'))],
+        [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
+  );
+});
+
+// ❓ FAQ
+bot.action('ACTION_FAQ', (ctx) => sendFAQMenu(ctx));
+bot.action('FAQ_DELIVERY', (ctx) => ctx.reply("⏱️ <b>How long does delivery take?</b>\n\nOrders are delivered within 5 to 15 minutes after uploading your payment screenshot.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+bot.action('FAQ_PAYMENT', (ctx) => ctx.reply("💳 <b>How do I pay?</b>\n\nWe accept Telebirr (Mobile Money) and Binance Pay.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+bot.action('FAQ_OFFICIAL', (ctx) => ctx.reply("🔒 <b>Is this an official subscription?</b>\n\nYes! 100% genuine guaranteed access.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+bot.action('FAQ_CHANGE_ACC', (ctx) => ctx.reply("🔄 <b>Can I change my account?</b>\n\nYes, contact @" + SUPPORT_USERNAME + " after ordering.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+bot.action('FAQ_EXPIRY', (ctx) => ctx.reply("⏰ <b>What happens when my subscription expires?</b>\n\nYou will receive a reminder before expiration.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+bot.action('FAQ_PROBLEM', (ctx) => ctx.reply("🛠️ <b>What if I have a problem?</b>\n\nContact support at @" + SUPPORT_USERNAME + " for fast assistance!", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+bot.action('FAQ_SUPPORT', (ctx) => ctx.reply("📞 <b>How do I contact support?</b>\n\nDirect Telegram: @" + SUPPORT_USERNAME, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+
+// 👥 7. MY ORDERS DASHBOARD
+bot.action('ACTION_MY_ORDERS', async (ctx) => {
+  const userId = ctx.from.id;
+  const orders = await getUserOrders(userId);
   const activeOrders = orders.filter(o => o.status === 'Active');
   const pendingOrders = orders.filter(o => o.status === 'Pending');
 
@@ -797,15 +737,15 @@ bot.action('ACTION_MY_ORDERS', (ctx) => {
   );
 });
 
-bot.action('MY_ORDERS_ACTIVE', (ctx) => {
+bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   const userId = ctx.from.id;
-  const orders = db.userOrders[userId] || [];
+  const orders = await getUserOrders(userId);
   const activeOrders = orders.filter(o => o.status === 'Active');
   const pendingOrders = orders.filter(o => o.status === 'Pending');
 
   if (activeOrders.length === 0 && pendingOrders.length === 0) {
     return ctx.reply(
-      "📦 <b>Active Orders:</b>\n\nYou do not have any active or pending subscriptions right now.\n\nReady to upgrade your trading?",
+      "📦 <b>Active Orders:</b>\n\nYou do not have any active or pending subscriptions right now.",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
@@ -817,21 +757,17 @@ bot.action('MY_ORDERS_ACTIVE', (ctx) => {
   }
 
   let responseText = "📦 <b>YOUR SUBSCRIPTIONS:</b>\n\n";
-  
   if (activeOrders.length > 0) {
     responseText += "🟢 <b>ACTIVE SUBSCRIPTIONS:</b>\n";
     activeOrders.forEach((ord, i) => {
-      responseText += `<b>${i + 1}. ${ord.tool}</b>\n` +
-                      `• Status: 🟢 Active\n\n`;
+      responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟢 Active\n\n`;
     });
   }
 
   if (pendingOrders.length > 0) {
     responseText += "🟡 <b>PENDING VERIFICATION:</b>\n";
     pendingOrders.forEach((ord, i) => {
-      responseText += `<b>${i + 1}. ${ord.tool}</b>\n` +
-                      `• Status: 🟡 Awaiting Verification\n` +
-                      `• Amount: ${ord.price || 'Paid'}\n\n`;
+      responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟡 Awaiting Verification\n• Amount: ${ord.price || 'Paid'}\n\n`;
     });
   }
 
@@ -846,9 +782,9 @@ bot.action('MY_ORDERS_ACTIVE', (ctx) => {
   });
 });
 
-bot.action('MY_ORDERS_HISTORY', (ctx) => {
+bot.action('MY_ORDERS_HISTORY', async (ctx) => {
   const userId = ctx.from.id;
-  const orders = db.userOrders[userId] || [];
+  const orders = await getUserOrders(userId);
 
   if (orders.length === 0) {
     return ctx.reply(
@@ -866,20 +802,19 @@ bot.action('MY_ORDERS_HISTORY', (ctx) => {
   let responseText = "🕐 <b>YOUR ORDER HISTORY:</b>\n\n";
   orders.forEach((ord, idx) => {
     const icon = ord.status === 'Active' ? '🟢' : (ord.status === 'Pending' ? '🟡' : '⚪');
-    responseText += `#${ord.id || (1000 + idx + 1)} - ${ord.tool} (${icon} ${ord.status})\n`;
+    responseText += `#${idx + 1} - ${ord.tool} (${icon} ${ord.status})\n`;
   });
 
   ctx.reply(responseText, {
     parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-    ])
+    ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]])
   });
 });
 
-bot.action('MY_ORDERS_KEYS', (ctx) => {
+bot.action('MY_ORDERS_KEYS', async (ctx) => {
   const userId = ctx.from.id;
-  const orders = (db.userOrders[userId] || []).filter(o => o.credentials && o.credentials.trim().length > 0);
+  const allOrders = await getUserOrders(userId);
+  const orders = allOrders.filter(o => o.credentials && o.credentials.trim().length > 0);
 
   if (orders.length === 0) {
     return ctx.reply(
@@ -916,7 +851,7 @@ bot.action('MY_ORDERS_KEYS', (ctx) => {
 
 bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
 
-// 💳 Payment Details Display (With Monospace Click-to-Copy)
+// 💳 Payment Details
 bot.action(/PAY_(.+)/, (ctx) => {
   const method = ctx.match[1];
   const session = userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
@@ -940,28 +875,14 @@ bot.action(/PAY_(.+)/, (ctx) => {
   ctx.reply(payText, { parse_mode: 'HTML' });
 });
 
-// Customer Uploads Receipt Photo -> Automatically registers Pending Order
+// Customer Uploads Receipt Photo
 bot.on('photo', async (ctx) => {
   try {
     const user = ctx.from;
-    db.users.add(user.id);
-    const session = userSessions[user.id] || { tool: 'Trading Tool Access', finalPrice: 750, method: 'Direct' };
+    const session = userSessions[user.id] || { tool: 'Trading Tool Access', finalPrice: 750, method: 'Direct', planTitle: 'Standard' };
     const photo = ctx.message.photo.pop();
 
-    const orderId = 1000 + (db.userOrders[user.id] ? db.userOrders[user.id].length + 1 : 1);
-
-    // Save pending order immediately into persistent database
-    if (!db.userOrders[user.id]) db.userOrders[user.id] = [];
-    db.userOrders[user.id].push({
-      id: orderId,
-      tool: session.tool || 'Trading Tool Access',
-      plan: session.planTitle || 'Standard Plan',
-      status: 'Pending',
-      price: `${session.finalPrice || 750} ETB`,
-      credentials: ''
-    });
-
-    saveDatabase();
+    await addPendingOrder(user.id, user.username, session.tool, session.planTitle, session.finalPrice);
 
     if (ADMIN_CHAT_ID) {
       try {
@@ -981,9 +902,7 @@ bot.on('photo', async (ctx) => {
             [Markup.button.callback("Reject Receipt (" + user.id + ")", "REJECT_" + user.id)]
           ])
         });
-      } catch (err) {
-        console.error('Error forwarding to admin:', err);
-      }
+      } catch (err) {}
     }
 
     ctx.reply(
@@ -992,12 +911,10 @@ bot.on('photo', async (ctx) => {
       "Our team is verifying the payment. Your login credentials will be delivered here within 5–15 minutes.",
       { parse_mode: 'HTML' }
     );
-  } catch (err) {
-    console.error("Error handling photo upload:", err);
-  }
+  } catch (err) {}
 });
 
-// ✍️ Robust Manual Admin Delivery (/send <userId> <credentials>)
+// ✍️ Admin Deliver Credentials (/send <userId> <credentials>)
 bot.command('send', async (ctx) => {
   try {
     if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
@@ -1024,52 +941,32 @@ bot.command('send', async (ctx) => {
                                  "📩 @" + SUPPORT_USERNAME;
 
     await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
+    await activateOrder(targetUserId, customMessage);
 
-    // Update existing pending order or create new active order in persistent database
-    if (!db.userOrders[targetUserId]) db.userOrders[targetUserId] = [];
-    
-    const pendingIdx = db.userOrders[targetUserId].findIndex(o => o.status === 'Pending');
-    if (pendingIdx !== -1) {
-      db.userOrders[targetUserId][pendingIdx].status = 'Active';
-      db.userOrders[targetUserId][pendingIdx].credentials = customMessage;
-    } else {
-      db.userOrders[targetUserId].push({
-        id: 1000 + db.userOrders[targetUserId].length + 1,
-        tool: (userSessions[targetUserId] && userSessions[targetUserId].tool) ? userSessions[targetUserId].tool : "Trading Tool Access",
-        plan: "Standard Plan",
-        status: "Active",
-        price: "Paid",
-        credentials: customMessage
-      });
-    }
-
-    db.ordersCount = (db.ordersCount || 0) + 1;
-    db.totalRevenue = (db.totalRevenue || 0) + (userSessions[targetUserId] ? userSessions[targetUserId].finalPrice || 750 : 750);
-
-    saveDatabase();
-
-    ctx.reply("✅ Order activated and credentials delivered to Customer (ID: " + targetUserId + ")!");
+    ctx.reply("✅ Order activated and saved permanently in database for Customer (ID: " + targetUserId + ")!");
   } catch (err) {
-    ctx.reply("Delivery failed! Error: " + err.message);
+    ctx.reply("Delivery failed: " + err.message);
   }
 });
 
 // 📢 Mass Broadcast Command (/broadcast <message>)
 bot.command('broadcast', async (ctx) => {
   try {
-    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
-      return ctx.reply('Administrator access required.');
-    }
+    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Administrator access required.');
 
     const text = ctx.message.text.replace('/broadcast', '').trim();
-    if (!text) {
-      return ctx.reply('Please include the broadcast text.\n\nExample:\n/broadcast Special flash deal on Fxreplay Pro!');
+    if (!text) return ctx.reply('Please include text. Example:\n/broadcast Flash deal on Fxreplay Pro!');
+
+    let userList = [];
+    if (isMongoConnected && User) {
+      const users = await User.find({}, 'userId');
+      userList = users.map(u => u.userId);
+    } else {
+      userList = Array.from(fallbackDb.users);
     }
 
-    const userList = Array.from(db.users);
-    let successCount = 0;
-
     ctx.reply("Sending broadcast to " + userList.length + " registered bot users...");
+    let successCount = 0;
 
     for (const uid of userList) {
       try {
@@ -1078,83 +975,33 @@ bot.command('broadcast', async (ctx) => {
       } catch (e) {}
     }
 
-    ctx.reply("Broadcast completed! Successfully reached " + successCount + " traders.");
-  } catch (err) {
-    console.error("Error in broadcast command:", err);
-  }
-});
-
-// 📊 Admin Analytics (/stats)
-bot.command('stats', (ctx) => {
-  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
-    return ctx.reply('Administrator access required.');
-  }
-
-  const totalUsers = db.users.size;
-  const totalOrders = db.ordersCount || 0;
-  const totalRevenue = db.totalRevenue || 0;
-
-  ctx.reply(
-    "📊 <b>A T T S BUSINESS ANALYTICS DASHBOARD:</b>\n\n" +
-    "👥 <b>Total Registered Traders:</b> " + totalUsers + " users\n" +
-    "📦 <b>Total Completed Orders:</b> " + totalOrders + " orders\n" +
-    "💰 <b>Total Recorded Revenue:</b> " + totalRevenue.toLocaleString() + " ETB\n" +
-    "⚡ <b>Database:</b> Disk JSON Persistent Storage Active",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
-      ])
-    }
-  );
-});
-
-bot.action('REFRESH_STATS', (ctx) => {
-  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return;
-  ctx.editMessageText(
-    "📊 <b>A T T S BUSINESS ANALYTICS (Live Update):</b>\n\n" +
-    "👥 <b>Total Traders:</b> " + db.users.size + " users\n" +
-    "📦 <b>Completed Orders:</b> " + (db.ordersCount || 0) + "\n" +
-    "💰 <b>Revenue:</b> " + (db.totalRevenue || 0).toLocaleString() + " ETB",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Refresh Stats', 'REFRESH_STATS')]
-      ])
-    }
-  );
+    ctx.reply("Broadcast completed! Reached " + successCount + " traders.");
+  } catch (err) {}
 });
 
 // Reject Order Callback
 bot.action(/REJECT_(\d+)/, async (ctx) => {
   const targetUserId = ctx.match[1];
   try {
-    if (db.userOrders[targetUserId]) {
-      const pendingIdx = db.userOrders[targetUserId].findIndex(o => o.status === 'Pending');
-      if (pendingIdx !== -1) {
-        db.userOrders[targetUserId][pendingIdx].status = 'Rejected';
-        saveDatabase();
-      }
-    }
-
+    await rejectPendingOrder(targetUserId);
     await bot.telegram.sendMessage(
       targetUserId,
       "❌ <b>Payment Verification Unsuccessful</b>\n\nWe could not confirm the uploaded transaction receipt. Please ensure you sent the correct screenshot or contact support at @" + SUPPORT_USERNAME,
       { parse_mode: 'HTML' }
     );
     ctx.editMessageCaption((ctx.update.callback_query.message.caption || '') + '\n\nSTATUS: REJECTED');
-  } catch (err) {
-    console.error('Error sending rejection:', err);
-  }
+  } catch (err) {}
 });
 
-// Launch Bot with Auto-Reconnect
+// Clean Telegram Launch with Auto-Reconnect & Webhook Cleanup
 async function startBotWithRetry() {
   try {
+    // Delete any hanging webhooks or old polling sessions to avoid 409 conflict
+    await bot.telegram.deleteWebhook({ drop_pending_updates: false });
     await bot.launch();
-    console.log('🚀 A T T S Telegram Bot (@abyssiniatradingbot) is Running 24/7!');
+    console.log('🚀 A T T S Telegram Bot is LIVE and connected!');
   } catch (err) {
-    console.error('Bot launch error, retrying in 5 seconds...', err.message);
+    console.error('Bot launch error, retrying in 5s...', err.message);
     setTimeout(startBotWithRetry, 5000);
   }
 }
