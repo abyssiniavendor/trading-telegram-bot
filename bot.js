@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// PRODUCTION SCRIPT WITH TELEGRAM MINI APP (WEB APP) & MONGODB
+// FULL-FEATURED TELEGRAM MINI APP WITH IN-APP CHECKOUT & MONGODB
 // ============================================================
 
 require('dotenv').config();
@@ -410,7 +410,7 @@ const PRODUCTS_CATALOG = {
   }
 };
 
-// 📱 TELEGRAM MINI APP (WEB APP) HTML ENGINE
+// 📱 TELEGRAM MINI APP (WEB APP) WITH IN-APP CHECKOUT
 const MINI_APP_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -437,7 +437,7 @@ const MINI_APP_HTML = `<!DOCTYPE html>
     .title { font-size: 20px; font-weight: 700; color: #fff; }
     .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
     
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 16px; transition: transform 0.15s ease; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
     .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
     .card-title { font-size: 16px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px; }
     .badge { padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
@@ -447,7 +447,7 @@ const MINI_APP_HTML = `<!DOCTYPE html>
     .desc { font-size: 13px; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px; }
     
     .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-    .btn { width: 100%; padding: 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; }
+    .btn { width: 100%; padding: 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; text-decoration: none; }
     .btn-primary { background: var(--primary); color: #fff; }
     .btn-primary:active { background: var(--primary-hover); transform: scale(0.98); }
     .btn-success { background: var(--success); color: #fff; }
@@ -455,70 +455,110 @@ const MINI_APP_HTML = `<!DOCTYPE html>
     .btn-secondary { background: #334155; color: #fff; }
     .btn-disabled { background: #1e293b; color: #64748b; border: 1px solid #334155; cursor: not-allowed; }
     
+    /* Checkout Modal / Screen */
+    #checkoutView { display: none; }
+    .checkout-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+    .pay-card { background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 12px 0; }
+    .copy-chip { background: #1e293b; border: 1px solid #3b82f6; color: #38bdf8; padding: 6px 12px; border-radius: 8px; display: inline-block; font-family: monospace; font-size: 14px; font-weight: bold; margin: 6px 0; cursor: pointer; }
+    
     .footer { text-align: center; margin-top: 24px; padding-bottom: 20px; font-size: 12px; color: var(--text-muted); }
     .footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo">🦅</div>
-    <h1 class="title">A T T S Store</h1>
-    <p class="subtitle">Official Abyssinia Trading Tools & Market Data Store</p>
+  <!-- STOREFRONT VIEW -->
+  <div id="storeView">
+    <div class="header">
+      <div class="logo">🦅</div>
+      <h1 class="title">A T T S Store</h1>
+      <p class="subtitle">Official Abyssinia Trading Tools & Market Data Store</p>
+    </div>
+
+    <!-- Fxreplay Card -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🔄 Fxreplay Pro</div>
+        <span class="badge badge-green">In Stock</span>
+      </div>
+      <p class="desc">The #1 multi-timeframe backtesting engine with realistic spreads, automated trade logs & tick replay.</p>
+      <div class="btn-grid">
+        <button class="btn btn-primary" onclick="showCheckout('Fxreplay Pro (Monthly)', '750 ETB')">📅 Monthly - 750 ETB</button>
+        <button class="btn btn-success" onclick="showCheckout('Fxreplay Pro (2 Weeks)', '550 ETB')">⏳ 2 Weeks - 550 ETB</button>
+      </div>
+      <button class="btn btn-secondary" style="margin-top: 8px;" onclick="showCheckout('Fxreplay Pro (Weekly)', '250 ETB')">⚡ Weekly Pass - 250 ETB</button>
+    </div>
+
+    <!-- TradingView Essential + CME -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📈 TV Essential + CME Data</div>
+        <span class="badge badge-blue">Best Seller</span>
+      </div>
+      <p class="desc">Essential charting tools paired with real-time CME market data feeds for Futures & Indices.</p>
+      <div class="btn-grid">
+        <button class="btn btn-primary" onclick="showCheckout('TV Essential + CME (1 Month)', '1,350 ETB')">1 Month - 1,350 ETB</button>
+        <button class="btn btn-success" onclick="showCheckout('TV Essential + CME (3 Months)', '3,600 ETB')">3 Months - 3,600 ETB</button>
+      </div>
+    </div>
+
+    <!-- TradingView Essential Pure -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📈 TradingView Essential</div>
+        <span class="badge badge-green">In Stock</span>
+      </div>
+      <p class="desc">Standard charting with 5 indicators per chart, unlimited saved layouts and custom timeframes.</p>
+      <div class="btn-grid">
+        <button class="btn btn-primary" onclick="showCheckout('TradingView Essential (1 Month)', '1,100 ETB')">1 Month - 1,100 ETB</button>
+        <button class="btn btn-success" onclick="showCheckout('TradingView Essential (3 Months)', '2,950 ETB')">3 Months - 2,950 ETB</button>
+      </div>
+    </div>
+
+    <!-- TradingView Premium (Out of Stock) -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📊 TradingView Premium</div>
+        <span class="badge badge-red">Out of Stock</span>
+      </div>
+      <p class="desc">25 indicators per chart, 8 charts per tab, and second-based intervals.</p>
+      <button class="btn btn-disabled" disabled>🚫 Restocking Soon</button>
+    </div>
+
+    <div class="footer">
+      <p>Need support? Contact <a href="https://t.me/${SUPPORT_USERNAME}">@${SUPPORT_USERNAME}</a></p>
+      <p style="margin-top: 4px;">A T T S © 2026 Abyssinia Trading</p>
+    </div>
   </div>
 
-  <!-- Fxreplay Card -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">🔄 Fxreplay Pro</div>
-      <span class="badge badge-green">In Stock</span>
-    </div>
-    <p class="desc">The #1 multi-timeframe backtesting engine with realistic spreads, automated trade logs & tick replay.</p>
-    <div class="btn-grid">
-      <button class="btn btn-primary" onclick="buy('fxr_monthly', 'Fxreplay Pro (Monthly)', '750 ETB')">📅 Monthly - 750 ETB</button>
-      <button class="btn btn-success" onclick="buy('fxr_twoweeks', 'Fxreplay Pro (2 Weeks)', '550 ETB')">⏳ 2 Weeks - 550 ETB</button>
-    </div>
-    <button class="btn btn-secondary" style="margin-top: 8px;" onclick="buy('fxr_weekly', 'Fxreplay Pro (Weekly)', '250 ETB')">⚡ Weekly Pass - 250 ETB</button>
-  </div>
+  <!-- CHECKOUT VIEW -->
+  <div id="checkoutView">
+    <button class="btn btn-secondary" style="margin-bottom: 16px; width: auto;" onclick="showStore()">⬅️ Back to Products</button>
+    <div class="checkout-box">
+      <h2 style="font-size: 18px; margin-bottom: 4px; color: #fff;">🧾 Order Checkout</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;" id="orderTitle">Package</p>
+      
+      <div style="font-size: 24px; font-weight: bold; color: #38bdf8; margin-bottom: 16px;" id="orderPrice">0 ETB</div>
 
-  <!-- TradingView Essential + CME -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">📈 TV Essential + CME Data</div>
-      <span class="badge badge-blue">Best Seller</span>
-    </div>
-    <p class="desc">Essential charting tools paired with real-time CME market data feeds for Futures & Indices.</p>
-    <div class="btn-grid">
-      <button class="btn btn-primary" onclick="buy('tvess_1m', 'TV Essential + CME (1 Month)', '1,350 ETB')">1 Month - 1,350 ETB</button>
-      <button class="btn btn-success" onclick="buy('tvess_3m', 'TV Essential + CME (3 Months)', '3,600 ETB')">3 Months - 3,600 ETB</button>
-    </div>
-  </div>
+      <!-- Telebirr Pay Card -->
+      <div class="pay-card">
+        <div style="font-weight: 600; color: #4ade80; margin-bottom: 4px;">📱 Telebirr (Mobile Money)</div>
+        <p style="font-size: 12px; color: var(--text-muted);">Account Name: Berihanu</p>
+        <div class="copy-chip" onclick="copyText('0938652861')">0938652861 📋 (Tap to copy)</div>
+      </div>
 
-  <!-- TradingView Essential Pure -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">📈 TradingView Essential</div>
-      <span class="badge badge-green">In Stock</span>
-    </div>
-    <p class="desc">Standard charting with 5 indicators per chart, unlimited saved layouts and custom timeframes.</p>
-    <div class="btn-grid">
-      <button class="btn btn-primary" onclick="buy('tvess_pure_1m', 'TradingView Essential (1 Month)', '1,100 ETB')">1 Month - 1,100 ETB</button>
-      <button class="btn btn-success" onclick="buy('tvess_pure_3m', 'TradingView Essential (3 Months)', '2,950 ETB')">3 Months - 2,950 ETB</button>
-    </div>
-  </div>
+      <!-- Binance Pay Card -->
+      <div class="pay-card">
+        <div style="font-weight: 600; color: #fbbf24; margin-bottom: 4px;">💎 Binance Pay (USDT)</div>
+        <p style="font-size: 12px; color: var(--text-muted);">Payee Name: ABYSSINIAVENDOR</p>
+        <div class="copy-chip" onclick="copyText('874067761')">874067761 📋 (Tap to copy)</div>
+      </div>
 
-  <!-- TradingView Premium (Out of Stock) -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">📊 TradingView Premium</div>
-      <span class="badge badge-red">Out of Stock</span>
-    </div>
-    <p class="desc">25 indicators per chart, 8 charts per tab, and second-based intervals.</p>
-    <button class="btn btn-disabled" disabled>🚫 Restocking Soon</button>
-  </div>
+      <div style="background: rgba(37,99,235,0.1); border: 1px dashed var(--primary); padding: 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; color: #cbd5e1; margin-top: 16px;">
+        ⚠️ <b>Next Step:</b> After completing your payment, close this window and send your screenshot receipt directly in the bot chat to receive your login credentials.
+      </div>
 
-  <div class="footer">
-    <p>Need support? Contact <a href="https://t.me/${SUPPORT_USERNAME}">@${SUPPORT_USERNAME}</a></p>
-    <p style="margin-top: 4px;">A T T S © 2026 Abyssinia Trading</p>
+      <button class="btn btn-primary" style="margin-top: 16px;" onclick="closeApp()">✅ Done & Send Receipt in Bot</button>
+    </div>
   </div>
 
   <script>
@@ -528,12 +568,32 @@ const MINI_APP_HTML = `<!DOCTYPE html>
       tg.ready();
     }
 
-    function buy(code, name, price) {
+    function showCheckout(title, price) {
+      document.getElementById('storeView').style.display = 'none';
+      document.getElementById('checkoutView').style.display = 'block';
+      document.getElementById('orderTitle').innerText = title;
+      document.getElementById('orderPrice').innerText = price;
+      window.scrollTo(0, 0);
+    }
+
+    function showStore() {
+      document.getElementById('checkoutView').style.display = 'none';
+      document.getElementById('storeView').style.display = 'block';
+    }
+
+    function copyText(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        if (tg && tg.showPopup) {
+          tg.showPopup({ message: 'Copied to clipboard: ' + text });
+        } else {
+          alert('Copied: ' + text);
+        }
+      });
+    }
+
+    function closeApp() {
       if (tg) {
-        tg.sendData(JSON.stringify({ action: 'BUY', code: code, name: name, price: price }));
         tg.close();
-      } else {
-        alert('Order for: ' + name + ' (' + price + '). Please return to chat to complete payment.');
       }
     }
   </script>
@@ -603,7 +663,7 @@ function sendMainMenu(ctx) {
     "Select an option below to get started:",
     {
       parse_mode: 'HTML',
-      ...Markup.removeKeyboard(), // Completely removes reply keyboard
+      ...Markup.removeKeyboard(),
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('🛍️ Open ATTS Storefront', storeUrl)],
         [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
@@ -786,39 +846,6 @@ bot.action('VERIFY_JOIN', async (ctx) => {
       return ctx.answerCbQuery("❌ Please join all channels first! Remaining: " + remaining, { show_alert: true });
     }
   } catch (err) {}
-});
-
-// 📱 Handle Telegram Web App Data Reception
-bot.on('web_app_data', (ctx) => {
-  try {
-    const data = JSON.parse(ctx.webAppData.data.text());
-    if (data.action === 'BUY') {
-      const numericPrice = parseInt(data.price.replace(/[^\d]/g, ''), 10) || 750;
-      userSessions[ctx.from.id] = {
-        productId: data.code,
-        tool: data.name,
-        planTitle: data.name,
-        finalPrice: numericPrice
-      };
-
-      ctx.reply(
-        "🧾 <b>Order Summary (Selected via Web App Store):</b>\n\n" +
-        `📦 <b>Product:</b> ${data.name}\n` +
-        `💰 <b>Total Payable:</b> ${data.price}\n\n` +
-        "Please choose your preferred payment method below:",
-        {
-          parse_mode: 'HTML',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-            [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
-            [Markup.button.callback('🛍️ Back To Store', 'ACTION_SHOP')]
-          ])
-        }
-      );
-    }
-  } catch (e) {
-    console.error("Web app data parse error:", e);
-  }
 });
 
 // 🛍️ 2. SHOP NOW INLINE MENU
