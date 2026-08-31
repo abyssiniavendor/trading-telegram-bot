@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// 24/7 PRODUCTION SCRIPT WITH CLOUD MONGODB PERMANENT DATABASE
+// 24/7 PRODUCTION SCRIPT WITH PERSISTENT CLOUD DATABASE & DIAGNOSTICS
 // ============================================================
 
 require('dotenv').config();
@@ -28,20 +28,20 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// 🛡️ ANTI-CRASH GLOBAL ERROR HANDLERS
+// 🛡️ Anti-Crash Error Handlers
 bot.catch((err, ctx) => {
-  console.error(`⚠️ Telegram Bot Error caught safely:`, err.message);
+  console.error(`⚠️ Telegram Bot Error:`, err.message);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('⚠️ Unhandled Rejection:', reason);
 });
 
 process.on('uncaughtException', (err) => {
-  console.error('⚠️ Uncaught Exception caught safely:', err.message);
+  console.error('⚠️ Uncaught Exception:', err.message);
 });
 
-// 📁 PERMANENT MONGODB SCHEMA & MODEL
+// 📁 MONGOOSE DATABASE SCHEMA
 const OrderSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   username: { type: String, default: 'Trader' },
@@ -60,10 +60,12 @@ const UserSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-let Order, User;
-let isMongoConnected = false;
+const Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// Fallback in-memory DB if MongoDB URL is not configured yet
+let isMongoConnected = false;
+let mongoErrorDetails = "MONGODB_URI environment variable is missing on Render";
+
 const fallbackDb = {
   users: new Set(),
   userOrders: {},
@@ -71,52 +73,59 @@ const fallbackDb = {
   referrals: {}
 };
 
-async function initDatabase() {
-  if (MONGODB_URI) {
-    try {
-      await mongoose.connect(MONGODB_URI);
-      Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
-      User = mongoose.models.User || mongoose.model('User', UserSchema);
-      isMongoConnected = true;
-      console.log('✅ Connected to MongoDB Cloud Database (Permanent Storage Active)!');
-    } catch (err) {
-      console.error('⚠️ MongoDB Connection Failed, using fallback:', err.message);
-    }
-  } else {
-    console.log('ℹ️ Running without MONGODB_URI. (Add MONGODB_URI in Render to persist across updates)');
+async function connectToMongo() {
+  if (!MONGODB_URI) {
+    console.log("❌ WARNING: MONGODB_URI is not set in Render Environment Variables. Using temporary memory (orders will NOT persist across deploys).");
+    return;
+  }
+
+  try {
+    console.log("⏳ Connecting to MongoDB Cloud Database...");
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 8000,
+      connectTimeoutMS: 10000
+    });
+    isMongoConnected = true;
+    mongoErrorDetails = "Connected successfully!";
+    console.log("✅ 🟢 SUCCESS: MongoDB Cloud Database is CONNECTED & ACTIVE! Orders will be saved permanently.");
+  } catch (err) {
+    isMongoConnected = false;
+    mongoErrorDetails = err.message;
+    console.error("❌ 🔴 MongoDB Connection Error:", err.message);
   }
 }
 
-initDatabase();
-
-// DB Helper Functions
+// DB Helpers
 async function recordUser(userId, username, referrerId = null) {
   userId = String(userId);
-  if (isMongoConnected && User) {
+  if (isMongoConnected) {
     try {
       await User.findOneAndUpdate(
         { userId },
         { userId, username: username || '', ...(referrerId ? { referrerId } : {}) },
         { upsert: true, new: true }
       );
-    } catch (e) {}
-  } else {
-    fallbackDb.users.add(userId);
-    if (referrerId && !fallbackDb.referrerOf[userId]) {
-      fallbackDb.referrerOf[userId] = referrerId;
-      if (!fallbackDb.referrals[referrerId]) fallbackDb.referrals[referrerId] = [];
-      fallbackDb.referrals[referrerId].push(userId);
+      return;
+    } catch (e) {
+      console.error("User save error in Mongo:", e.message);
     }
+  }
+  fallbackDb.users.add(userId);
+  if (referrerId && !fallbackDb.referrerOf[userId]) {
+    fallbackDb.referrerOf[userId] = referrerId;
+    if (!fallbackDb.referrals[referrerId]) fallbackDb.referrals[referrerId] = [];
+    fallbackDb.referrals[referrerId].push(userId);
   }
 }
 
 async function getUserOrders(userId) {
   userId = String(userId);
-  if (isMongoConnected && Order) {
+  if (isMongoConnected) {
     try {
-      return await Order.find({ userId }).sort({ createdAt: -1 });
+      const orders = await Order.find({ userId }).sort({ createdAt: -1 });
+      return orders;
     } catch (e) {
-      return [];
+      console.error("Get orders error:", e.message);
     }
   }
   return fallbackDb.userOrders[userId] || [];
@@ -124,9 +133,9 @@ async function getUserOrders(userId) {
 
 async function addPendingOrder(userId, username, tool, plan, price) {
   userId = String(userId);
-  if (isMongoConnected && Order) {
+  if (isMongoConnected) {
     try {
-      return await Order.create({
+      const newOrder = await Order.create({
         userId,
         username: username || '',
         tool,
@@ -135,13 +144,15 @@ async function addPendingOrder(userId, username, tool, plan, price) {
         price: `${price} ETB`,
         credentials: ''
       });
+      console.log(`✅ New order saved permanently in MongoDB (ID: ${newOrder._id})`);
+      return newOrder;
     } catch (e) {
-      console.error('Error creating MongoDB order:', e.message);
+      console.error("Add order Mongo error:", e.message);
     }
   }
 
   if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
-  const newOrd = {
+  const tempOrd = {
     _id: Date.now().toString(),
     userId,
     tool,
@@ -150,22 +161,23 @@ async function addPendingOrder(userId, username, tool, plan, price) {
     price: `${price} ETB`,
     credentials: ''
   };
-  fallbackDb.userOrders[userId].unshift(newOrd);
-  return newOrd;
+  fallbackDb.userOrders[userId].unshift(tempOrd);
+  return tempOrd;
 }
 
 async function activateOrder(userId, customMessage) {
   userId = String(userId);
-  if (isMongoConnected && Order) {
+  if (isMongoConnected) {
     try {
       const pending = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
       if (pending) {
         pending.status = 'Active';
         pending.credentials = customMessage;
         await pending.save();
+        console.log(`✅ Pending order activated in MongoDB for user ${userId}`);
         return pending;
       } else {
-        return await Order.create({
+        const created = await Order.create({
           userId,
           tool: 'Trading Tool Access',
           plan: 'Standard',
@@ -173,9 +185,11 @@ async function activateOrder(userId, customMessage) {
           price: 'Paid',
           credentials: customMessage
         });
+        console.log(`✅ Direct order created in MongoDB for user ${userId}`);
+        return created;
       }
     } catch (e) {
-      console.error('Error updating order:', e.message);
+      console.error("Activate order Mongo error:", e.message);
     }
   }
 
@@ -199,7 +213,7 @@ async function activateOrder(userId, customMessage) {
 
 async function rejectPendingOrder(userId) {
   userId = String(userId);
-  if (isMongoConnected && Order) {
+  if (isMongoConnected) {
     try {
       await Order.findOneAndUpdate(
         { userId, status: 'Pending' },
@@ -215,7 +229,7 @@ async function rejectPendingOrder(userId) {
 
 const userSessions = {}; // Transient checkout session
 
-// 🌐 Health check HTTP server for Render.com
+// 🌐 Health check HTTP server
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -226,43 +240,25 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 HTTP Health Check Server listening on port ${PORT}`);
 });
 
-// ⏰ Safe HTTPS Self-Ping Keep-Alive
+// ⏰ Safe Keep-Alive
 if (process.env.RENDER_EXTERNAL_URL) {
   const pingUrl = process.env.RENDER_EXTERNAL_URL;
   const client = pingUrl.startsWith('https') ? https : http;
   setInterval(() => {
-    client.get(pingUrl, (res) => {
-      console.log(`🔄 Self-ping keep-alive status: ${res.statusCode}`);
-    }).on('error', () => {});
+    client.get(pingUrl, (res) => {}).on('error', () => {});
   }, 10 * 60 * 1000);
 }
 
-// 💳 Payment Accounts Details (Telebirr & Binance)
+// Payment Accounts
 const PAYMENT_INFO = {
-  telebirr: {
-    number: "0938652861",
-    name: "Berihanu"
-  },
-  binance: {
-    id: "874067761",
-    name: "ABYSSINIAVENDOR"
-  }
+  telebirr: { number: "0938652861", name: "Berihanu" },
+  binance: { id: "874067761", name: "ABYSSINIAVENDOR" }
 };
 
-// Clean Products Catalog
+// Catalog
 const PRODUCTS_CATALOG = {
-  "tvprem_pure": {
-    id: "tvprem_pure",
-    title: "📊 TradingView Premium",
-    tagline: "Top tier TradingView plan with 25 indicators, 8 charts/tab, and second intervals.",
-    outOfStock: true
-  },
-  "tvprem": {
-    id: "tvprem",
-    title: "📊 TradingView Premium + CME Data",
-    tagline: "Top tier package with official CME Real-Time market data feed.",
-    outOfStock: true
-  },
+  "tvprem_pure": { id: "tvprem_pure", title: "📊 TradingView Premium", tagline: "Top tier TradingView plan.", outOfStock: true },
+  "tvprem": { id: "tvprem", title: "📊 TradingView Premium + CME Data", tagline: "Top tier with CME Data.", outOfStock: true },
   "tvess_pure": {
     id: "tvess_pure",
     title: "📈 TradingView Essential",
@@ -321,10 +317,9 @@ const PRODUCTS_CATALOG = {
   }
 };
 
-// 🔍 Multi-Channel Force Join Verification
+// Force Join Verification
 async function checkAllChannelMemberships(ctx, userId) {
   if (String(userId) === String(ADMIN_CHAT_ID)) return { allJoined: true, missing: [] };
-
   const missing = [];
   for (const ch of REQUIRED_CHANNELS) {
     try {
@@ -388,6 +383,36 @@ function sendFAQMenu(ctx) {
     }
   );
 }
+
+// 🩺 Database Status Diagnostic Command (/dbstatus)
+bot.command('dbstatus', async (ctx) => {
+  if (isMongoConnected) {
+    let orderCount = 0;
+    let userCount = 0;
+    try {
+      orderCount = await Order.countDocuments();
+      userCount = await User.countDocuments();
+    } catch (e) {}
+
+    return ctx.reply(
+      "🟢 <b>DATABASE STATUS: CLOUD MONGO CONNECTED!</b>\n\n" +
+      "✅ <b>Storage Type:</b> Permanent MongoDB Cloud\n" +
+      `📦 <b>Total Saved Orders:</b> ${orderCount}\n` +
+      `👥 <b>Total Saved Users:</b> ${userCount}\n\n` +
+      "🎉 <i>Your orders will NEVER be deleted even when you redeploy on Render!</i>",
+      { parse_mode: 'HTML' }
+    );
+  } else {
+    return ctx.reply(
+      "🔴 <b>DATABASE STATUS: TEMPORARY MEMORY (DISCONNECTED)</b>\n\n" +
+      "⚠️ <b>Why:</b> " + mongoErrorDetails + "\n\n" +
+      "💡 <b>How to fix:</b>\n" +
+      "1. Make sure <code>MONGODB_URI</code> is added in Render → Environment Variables\n" +
+      "2. In MongoDB Atlas → Network Access, make sure IP <code>0.0.0.0/0</code> is added.",
+      { parse_mode: 'HTML' }
+    );
+  }
+});
 
 // 1. /start command
 bot.start(async (ctx) => {
@@ -678,7 +703,7 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
   const refLink = "https://t.me/" + botInfo.username + "?start=ref_" + userId;
 
   let count = 0;
-  if (isMongoConnected && User) {
+  if (isMongoConnected) {
     try { count = await User.countDocuments({ referrerId: String(userId) }); } catch (e) {}
   } else {
     count = (fallbackDb.referrals[userId] || []).length;
@@ -711,7 +736,7 @@ bot.action('FAQ_EXPIRY', (ctx) => ctx.reply("⏰ <b>What happens when my subscri
 bot.action('FAQ_PROBLEM', (ctx) => ctx.reply("🛠️ <b>What if I have a problem?</b>\n\nContact support at @" + SUPPORT_USERNAME + " for fast assistance!", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 bot.action('FAQ_SUPPORT', (ctx) => ctx.reply("📞 <b>How do I contact support?</b>\n\nDirect Telegram: @" + SUPPORT_USERNAME, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
 
-// 👥 7. MY ORDERS DASHBOARD
+// 👥 7. MY ORDERS DASHBOARD (Cloud-backed, permanently stored)
 bot.action('ACTION_MY_ORDERS', async (ctx) => {
   const userId = ctx.from.id;
   const orders = await getUserOrders(userId);
@@ -875,7 +900,7 @@ bot.action(/PAY_(.+)/, (ctx) => {
   ctx.reply(payText, { parse_mode: 'HTML' });
 });
 
-// Customer Uploads Receipt Photo
+// Customer Uploads Receipt Photo -> Automatically saved in MongoDB
 bot.on('photo', async (ctx) => {
   try {
     const user = ctx.from;
@@ -958,7 +983,7 @@ bot.command('broadcast', async (ctx) => {
     if (!text) return ctx.reply('Please include text. Example:\n/broadcast Flash deal on Fxreplay Pro!');
 
     let userList = [];
-    if (isMongoConnected && User) {
+    if (isMongoConnected) {
       const users = await User.find({}, 'userId');
       userList = users.map(u => u.userId);
     } else {
@@ -993,20 +1018,21 @@ bot.action(/REJECT_(\d+)/, async (ctx) => {
   } catch (err) {}
 });
 
-// Clean Telegram Launch with Auto-Reconnect & Webhook Cleanup
-async function startBotWithRetry() {
+// 🚀 Startup Sequence (Connects DB first, then launches Bot)
+async function startApplication() {
+  await connectToMongo();
+
   try {
-    // Delete any hanging webhooks or old polling sessions to avoid 409 conflict
     await bot.telegram.deleteWebhook({ drop_pending_updates: false });
     await bot.launch();
     console.log('🚀 A T T S Telegram Bot is LIVE and connected!');
   } catch (err) {
     console.error('Bot launch error, retrying in 5s...', err.message);
-    setTimeout(startBotWithRetry, 5000);
+    setTimeout(startApplication, 5000);
   }
 }
 
-startBotWithRetry();
+startApplication();
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
