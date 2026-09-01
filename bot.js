@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 ATTS - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// FULL PRODUCTION BACKEND BOT
+// FULL PRODUCTION BACKEND BOT WITH ⮒ Menu BUTTONS
 // ============================================================
 
 require('dotenv').config();
@@ -531,7 +531,7 @@ function sendMainMenu(ctx) {
 // 2. TV Premium | TV premium + CME
 // 3. TV Essential | TV Essential + CME
 // 4. Abyssinia Journal
-// 5. My wallet | Main menu
+// 5. My wallet | ⮒ Menu
 // ============================================================
 
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
@@ -545,11 +545,11 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          // 1. Fxreplay pro (Full Width)
+          // 1. Fxreplay Pro (Full Width)
           [
             Markup.button.callback('🔄 Fxreplay Pro', 'VIEW_fxr')
           ],
-          // 2. TV Premium | TV premium + CME (2 Columns)
+          // 2. TV Premium | TV Premium + CME (2 Columns)
           [
             Markup.button.callback('📊 TV Premium', 'VIEW_tvprem_pure'),
             Markup.button.callback('📊 TV Premium + CME', 'VIEW_tvprem')
@@ -563,10 +563,10 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
           [
             Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')
           ],
-          // 5. My wallet | Main menu (2 Columns)
+          // 5. My Wallet | ⮒ Menu (2 Columns)
           [
             Markup.button.callback('💳 My Wallet', 'ACTION_WALLET'),
-            Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
+            Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')
           ]
         ])
       }
@@ -585,7 +585,7 @@ bot.action('VIEW_abyssinia_journal', (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.url('📢 Follow Updates in Channel', 'https://t.me/abyssiniatradinget')],
-        [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -608,7 +608,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [Markup.button.url('📢 Go To Official Channel', 'https://t.me/abyssiniatradinget')],
-            [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+            [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
           ])
         }
       );
@@ -625,7 +625,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
         [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
         [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
         [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
-        [Markup.button.callback('⬅️ Back To Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⬅️ Back To Tools', 'ACTION_SHOP'), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ];
       return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
     }
@@ -642,7 +642,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
 
     planButtons.push([
       Markup.button.callback('⬅️ Back To Tools', 'ACTION_SHOP'),
-      Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
+      Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')
     ]);
 
     ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(planButtons) });
@@ -711,7 +711,7 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
         ...Markup.inlineKeyboard([
           [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_fxr_${optCode}`)],
           [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR'), Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
-          [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+          [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr'), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
         ])
       }
     );
@@ -749,7 +749,7 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
         ...Markup.inlineKeyboard([
           [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_${prodKey}_${planCode}`)],
           [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR'), Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
-          [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+          [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
         ])
       }
     );
@@ -816,7 +816,7 @@ bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS'), Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
-        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -868,7 +868,7 @@ bot.action('ACTION_WALLET', async (ctx) => {
         ...Markup.inlineKeyboard([
           [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
           [Markup.button.callback('📜 History', 'WALLET_HISTORY'), Markup.button.callback('🛒 Buy with Wallet', 'ACTION_SHOP')],
-          [Markup.button.callback('🏠 Back to Main Menu', 'ACTION_MAIN_MENU')]
+          [Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
         ])
       }
     );
@@ -887,7 +887,7 @@ bot.action('WALLET_DEPOSIT', async (ctx) => {
         [Markup.button.callback('👉 500 ETB', 'DEP_AMT_500'), Markup.button.callback('👉 1,000 ETB', 'DEP_AMT_1000')],
         [Markup.button.callback('👉 2,500 ETB', 'DEP_AMT_2500'), Markup.button.callback('👉 5,000 ETB', 'DEP_AMT_5000')],
         [Markup.button.callback('💵 Custom Amount', 'DEP_AMT_CUSTOM')],
-        [Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET'), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -1095,7 +1095,7 @@ bot.on('photo', async (ctx) => {
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+            [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS'), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
           ])
         }
       );
@@ -1373,7 +1373,7 @@ bot.action('ACTION_MY_ORDERS', async (ctx) => {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📊 Browse Tools', 'ACTION_SHOP'), Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
-      [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      [Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
     ])
   });
 });
@@ -1390,7 +1390,7 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP'), Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
-        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -1406,7 +1406,7 @@ bot.action('ACTION_OFFERS', (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP'), Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
-        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -1435,7 +1435,7 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.url('📢 Share Link on Telegram', `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('Get genuine TradingView CME feeds & FX Replay Pro on ATTS!')}`)],
-        [Markup.button.callback('💳 View Wallet', 'ACTION_WALLET'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('💳 View Wallet', 'ACTION_WALLET'), Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -1452,7 +1452,7 @@ bot.action('ACTION_FAQ', (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP'), Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
-        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⮒ Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
