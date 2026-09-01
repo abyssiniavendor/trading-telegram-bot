@@ -1,6 +1,6 @@
 // ============================================================
-// 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// COMPLETE PRODUCTION CODE: WALLET SYSTEM + BUTTON GRID LAYOUT
+// 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE BOT (@abyssiniatradingbot)
+// FULL RESTORED PRODUCTION CODE WITH CUSTOMER WALLET & EXACT BUTTON ALIGNMENT
 // ============================================================
 
 require('dotenv').config();
@@ -14,71 +14,38 @@ const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniavendor";
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// 📢 Required Channels that users must join
+// 📢 Community Channels for Membership Check
 const REQUIRED_CHANNELS = [
-  { username: "@abyssiniatradinget", name: "Abyssinia Trading Official", url: "https://t.me/abyssiniatradinget" },
-  { username: "@abyssiniachat", name: "Abyssinia Trading Chat Community", url: "https://t.me/abyssiniachat" },
-  { username: "@abyssiniattstore", name: "A T T S Store Channel", url: "https://t.me/abyssiniattstore" }
+  { id: "@abyssiniatradinget", name: "Abyssinia Trading", url: "https://t.me/abyssiniatradinget" },
+  { id: "@abyssiniachat", name: "Abyssinia Chat Community", url: "https://t.me/abyssiniachat" },
+  { id: "@abyssiniattstore", name: "A T T S Store Channel", url: "https://t.me/abyssiniattstore" }
 ];
 
 if (!BOT_TOKEN) {
-  console.error("FATAL: BOT_TOKEN is missing in environment variables!");
+  console.error("FATAL ERROR: BOT_TOKEN is missing in .env!");
   process.exit(1);
 }
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// 🛡️ Anti-Crash Error Handlers
-bot.catch((err) => {
-  console.error(`⚠️ Telegram Bot Error:`, err.message);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ Unhandled Rejection:', reason);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('⚠️ Uncaught Exception:', err.message);
-});
+// Anti-crash handlers
+bot.catch((err) => console.error("⚠️ Telegram Bot Error:", err.message));
+process.on('unhandledRejection', (reason) => console.error("⚠️ Unhandled Rejection:", reason));
+process.on('uncaughtException', (err) => console.error("⚠️ Uncaught Exception:", err.message));
 
 // ============================================================
-// 📁 MONGOOSE DATABASE SCHEMAS
+// 📁 DATABASE SCHEMAS (MONGODB)
 // ============================================================
 
 const UserSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true, index: true },
   username: { type: String, default: '' },
+  firstName: { type: String, default: '' },
   balance: { type: Number, default: 0 },
-  referrerId: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 
-const OrderSchema = new mongoose.Schema({
-  userId: { type: String, required: true, index: true },
-  username: { type: String, default: 'Trader' },
-  tool: { type: String, required: true },
-  plan: { type: String, default: 'Standard' },
-  status: { type: String, default: 'Pending' }, // 'Pending' | 'Active' | 'Expired' | 'Rejected'
-  price: { type: String, default: 'Paid' },
-  paymentMethod: { type: String, default: 'Direct' }, // 'Wallet' | 'Telebirr' | 'Binance'
-  credentials: { type: String, default: '' },
-  expiresAt: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const DepositSchema = new mongoose.Schema({
-  userId: { type: String, required: true, index: true },
-  username: { type: String, default: 'Trader' },
-  amount: { type: Number, required: true },
-  method: { type: String, default: 'Telebirr' },
-  refCode: { type: String, required: true, unique: true },
-  status: { type: String, default: 'PENDING' }, // 'PENDING' | 'APPROVED' | 'REJECTED'
-  receiptPhotoId: { type: String, default: '' },
-  createdAt: { type: Date, default: Date.now },
-  processedAt: { type: Date, default: null }
-});
-
-const WalletTransactionSchema = new mongoose.Schema({
+const TransactionSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   type: { type: String, required: true }, // 'DEPOSIT' | 'PURCHASE' | 'ADMIN_CREDIT' | 'ADMIN_DEBIT'
   amount: { type: Number, required: true },
@@ -87,91 +54,90 @@ const WalletTransactionSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+const DepositSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  username: { type: String, default: '' },
+  amount: { type: Number, required: true },
+  method: { type: String, default: 'Telebirr' },
+  refCode: { type: String, required: true, unique: true },
+  status: { type: String, default: 'PENDING' }, // 'PENDING' | 'APPROVED' | 'REJECTED'
+  receiptPhotoId: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+  reviewedAt: { type: Date, default: null }
+});
+
+const OrderSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  username: { type: String, default: '' },
+  toolName: { type: String, required: true },
+  price: { type: String, required: true },
+  method: { type: String, default: 'Direct' },
+  receiptPhotoId: { type: String, default: '' },
+  status: { type: String, default: 'Pending' },
+  credentials: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
-const Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
+const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);
 const Deposit = mongoose.models.Deposit || mongoose.model('Deposit', DepositSchema);
-const WalletTransaction = mongoose.models.WalletTransaction || mongoose.model('WalletTransaction', WalletTransactionSchema);
+const Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
 
 let isMongoConnected = false;
-let mongoErrorDetails = "MONGODB_URI is not configured yet";
 
-// Temporary fallback in-memory store if MongoDB is temporarily unreachable
-const fallbackDb = {
+// Fallback in-memory cache
+const memoryDb = {
   users: new Map(),
-  userOrders: {},
+  transactions: [],
   deposits: [],
-  transactions: {},
-  referrerOf: {},
-  referrals: {}
+  orders: []
 };
 
 async function connectToMongo() {
-  if (!MONGODB_URI) {
-    console.log("⚠️ NOTICE: MONGODB_URI not provided. Operating in in-memory state.");
-    return;
-  }
+  if (!MONGODB_URI) return;
   try {
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 8000,
-      connectTimeoutMS: 10000
-    });
+    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 8000 });
     isMongoConnected = true;
-    console.log("✅ 🟢 MongoDB Cloud Database CONNECTED!");
+    console.log("✅ 🟢 MongoDB Connected Successfully!");
   } catch (err) {
-    isMongoConnected = false;
-    mongoErrorDetails = err.message;
-    console.error("❌ MongoDB Connection Error:", err.message);
+    console.error("❌ MongoDB Connection Failed:", err.message);
   }
 }
 
-// Auto-expire overdue orders periodically
-async function checkExpiredOrders() {
-  const now = new Date();
-  if (isMongoConnected) {
-    try {
-      await Order.updateMany(
-        { status: 'Active', expiresAt: { $ne: null, $lte: now } },
-        { status: 'Expired' }
-      );
-    } catch (e) {}
-  }
-}
-setInterval(checkExpiredOrders, 60 * 60 * 1000);
-
 // ============================================================
-// 💰 WALLET & USER DATABASE HELPERS
+// 💰 WALLET OPERATIONS
 // ============================================================
 
-async function recordUser(userId, username, referrerId = null) {
+async function getOrCreateUser(userId, username, firstName) {
   userId = String(userId);
   if (isMongoConnected) {
     try {
-      await User.findOneAndUpdate(
-        { userId },
-        { userId, username: username || '', ...(referrerId ? { referrerId } : {}) },
-        { upsert: true, new: true }
-      );
-      return;
+      let u = await User.findOne({ userId });
+      if (!u) {
+        u = await User.create({ userId, username: username || '', firstName: firstName || '', balance: 0 });
+      }
+      return u;
     } catch (e) {}
   }
-  if (!fallbackDb.users.has(userId)) {
-    fallbackDb.users.set(userId, { userId, username: username || '', balance: 0, referrerId });
+  if (!memoryDb.users.has(userId)) {
+    memoryDb.users.set(userId, { userId, username: username || '', balance: 0 });
   }
+  return memoryDb.users.get(userId);
 }
 
 async function getUserBalance(userId) {
   userId = String(userId);
   if (isMongoConnected) {
     try {
-      const user = await User.findOne({ userId });
-      return user ? (user.balance || 0) : 0;
+      const u = await User.findOne({ userId });
+      return u ? u.balance : 0;
     } catch (e) {}
   }
-  const memUser = fallbackDb.users.get(userId);
-  return memUser ? (memUser.balance || 0) : 0;
+  const u = memoryDb.users.get(userId);
+  return u ? u.balance : 0;
 }
 
-async function creditWallet(userId, amount, description = 'Wallet Deposit', type = 'DEPOSIT') {
+async function creditUserWallet(userId, amount, description = 'Deposit') {
   userId = String(userId);
   amount = Math.abs(Number(amount));
 
@@ -182,9 +148,9 @@ async function creditWallet(userId, amount, description = 'Wallet Deposit', type
         { $inc: { balance: amount } },
         { upsert: true, new: true }
       );
-      await WalletTransaction.create({
+      await Transaction.create({
         userId,
-        type,
+        type: 'DEPOSIT',
         amount,
         balanceAfter: user.balance,
         description
@@ -193,36 +159,36 @@ async function creditWallet(userId, amount, description = 'Wallet Deposit', type
     } catch (e) {}
   }
 
-  let memUser = fallbackDb.users.get(userId);
-  if (!memUser) {
-    memUser = { userId, username: '', balance: 0 };
-    fallbackDb.users.set(userId, memUser);
+  let u = memoryDb.users.get(userId);
+  if (!u) {
+    u = { userId, balance: 0 };
+    memoryDb.users.set(userId, u);
   }
-  memUser.balance += amount;
-  if (!fallbackDb.transactions[userId]) fallbackDb.transactions[userId] = [];
-  fallbackDb.transactions[userId].unshift({
-    type,
+  u.balance += amount;
+  memoryDb.transactions.push({
+    userId,
+    type: 'DEPOSIT',
     amount,
-    balanceAfter: memUser.balance,
+    balanceAfter: u.balance,
     description,
     createdAt: new Date()
   });
-  return memUser.balance;
+  return u.balance;
 }
 
-async function debitWallet(userId, amount, description = 'Product Purchase', type = 'PURCHASE') {
+async function debitUserWallet(userId, amount, description = 'Purchase') {
   userId = String(userId);
   amount = Math.abs(Number(amount));
 
   if (isMongoConnected) {
     try {
       const user = await User.findOne({ userId });
-      if (!user || (user.balance || 0) < amount) return null;
+      if (!user || user.balance < amount) return null;
       user.balance -= amount;
       await user.save();
-      await WalletTransaction.create({
+      await Transaction.create({
         userId,
-        type,
+        type: 'PURCHASE',
         amount: -amount,
         balanceAfter: user.balance,
         description
@@ -231,213 +197,79 @@ async function debitWallet(userId, amount, description = 'Product Purchase', typ
     } catch (e) {}
   }
 
-  let memUser = fallbackDb.users.get(userId);
-  if (!memUser || (memUser.balance || 0) < amount) return null;
-  memUser.balance -= amount;
-  if (!fallbackDb.transactions[userId]) fallbackDb.transactions[userId] = [];
-  fallbackDb.transactions[userId].unshift({
-    type,
+  const u = memoryDb.users.get(userId);
+  if (!u || u.balance < amount) return null;
+  u.balance -= amount;
+  memoryDb.transactions.push({
+    userId,
+    type: 'PURCHASE',
     amount: -amount,
-    balanceAfter: memUser.balance,
+    balanceAfter: u.balance,
     description,
     createdAt: new Date()
   });
-  return memUser.balance;
+  return u.balance;
 }
 
-async function getWalletTransactions(userId) {
-  userId = String(userId);
-  if (isMongoConnected) {
-    try {
-      return await WalletTransaction.find({ userId }).sort({ createdAt: -1 }).limit(10);
-    } catch (e) {}
-  }
-  return (fallbackDb.transactions[userId] || []).slice(0, 10);
-}
-
-async function createDepositRequest(userId, username, amount, method, refCode, photoId = '') {
-  userId = String(userId);
-  if (isMongoConnected) {
-    try {
-      return await Deposit.create({
-        userId,
-        username: username || '',
-        amount,
-        method,
-        refCode,
-        status: 'PENDING',
-        receiptPhotoId: photoId
-      });
-    } catch (e) {}
-  }
-
-  const dep = {
-    _id: Date.now().toString(),
-    userId,
-    username: username || '',
-    amount,
-    method,
-    refCode,
-    status: 'PENDING',
-    receiptPhotoId: photoId,
-    createdAt: new Date()
-  };
-  fallbackDb.deposits.unshift(dep);
-  return dep;
-}
-
-async function getUserOrders(userId) {
-  await checkExpiredOrders();
-  userId = String(userId);
-  if (isMongoConnected) {
-    try {
-      return await Order.find({ userId }).sort({ createdAt: -1 });
-    } catch (e) {}
-  }
-  return fallbackDb.userOrders[userId] || [];
-}
-
-async function addPendingOrder(userId, username, tool, plan, price, paymentMethod = 'Direct') {
-  userId = String(userId);
-  if (isMongoConnected) {
-    try {
-      return await Order.create({
-        userId,
-        username: username || '',
-        tool,
-        plan,
-        status: 'Pending',
-        price: `${price} ETB`,
-        paymentMethod,
-        credentials: ''
-      });
-    } catch (e) {}
-  }
-  if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
-  const tempOrd = {
-    _id: Date.now().toString(),
-    userId,
-    tool,
-    plan,
-    status: 'Pending',
-    price: `${price} ETB`,
-    paymentMethod,
-    credentials: ''
-  };
-  fallbackDb.userOrders[userId].unshift(tempOrd);
-  return tempOrd;
-}
-
-async function activateOrder(userId, customMessage, durationDays = null) {
-  userId = String(userId);
-  const expiresAt = durationDays ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000) : null;
-
-  if (isMongoConnected) {
-    try {
-      let targetOrder = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
-      if (targetOrder) {
-        targetOrder.status = 'Active';
-        targetOrder.credentials = customMessage;
-        if (expiresAt) targetOrder.expiresAt = expiresAt;
-        await targetOrder.save();
-        return targetOrder;
-      } else {
-        return await Order.create({
-          userId,
-          tool: 'Trading Tool Access',
-          plan: 'Standard Access',
-          status: 'Active',
-          price: 'Paid',
-          credentials: customMessage,
-          expiresAt: expiresAt
-        });
-      }
-    } catch (e) {}
-  }
-
-  if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
-  const pending = fallbackDb.userOrders[userId].find(o => o.status === 'Pending');
-  if (pending) {
-    pending.status = 'Active';
-    pending.credentials = customMessage;
-    pending.expiresAt = expiresAt;
-  }
-}
-
-// In-flight user session tracking
+// User active session state
 const userSessions = {};
 
 // Payment Accounts
 const PAYMENT_INFO = {
   telebirr: { number: "0938652861", name: "Berihanu" },
-  binance: { id: "874067761", name: "ABYSSINIAVENDOR" }
+  binance: { payId: "874067761", name: "ABYSSINIAVENDOR" }
 };
 
-// 🌐 Health Check HTTP Server for Render
+// 🌐 Health check server for Render/Cloud
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('A T T S Telegram Bot Server is LIVE 24/7!');
-}).listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 Health check server active on port ${PORT}`);
-});
+  res.end('ATTS Bot Server is Online 24/7');
+}).listen(PORT, '0.0.0.0');
 
-// Safe Keep-Alive
+// Keep-Alive Ping
 if (process.env.RENDER_EXTERNAL_URL) {
   const pingUrl = process.env.RENDER_EXTERNAL_URL;
   const client = pingUrl.startsWith('https') ? https : http;
-  setInterval(() => {
-    client.get(pingUrl, () => {}).on('error', () => {});
-  }, 10 * 60 * 1000);
+  setInterval(() => client.get(pingUrl, () => {}).on('error', () => {}), 10 * 60 * 1000);
 }
 
-// 🛡️ Middleware: Ignore Channel & Group Messages
+// Ignore Channel & Group Messages
 bot.use((ctx, next) => {
-  if (ctx.channelPost || (ctx.chat && ctx.chat.type !== 'private')) {
-    return;
-  }
+  if (ctx.channelPost || (ctx.chat && ctx.chat.type !== 'private')) return;
   return next();
 });
 
-// Force Join Verification
-async function checkAllChannelMemberships(ctx, userId) {
-  if (String(userId) === String(ADMIN_CHAT_ID)) return { allJoined: true, missing: [] };
-  const missing = [];
+// Force Channel Join Verification
+async function checkChannels(ctx, userId) {
+  if (String(userId) === String(ADMIN_CHAT_ID)) return true;
   for (const ch of REQUIRED_CHANNELS) {
     try {
-      const member = await ctx.telegram.getChatMember(ch.username, userId);
-      const isMember = ['member', 'administrator', 'creator'].includes(member.status);
-      if (!isMember) missing.push(ch);
+      const member = await ctx.telegram.getChatMember(ch.id, userId);
+      if (!['member', 'administrator', 'creator'].includes(member.status)) return false;
     } catch (err) {}
   }
-  return { allJoined: missing.length === 0, missing };
+  return true;
 }
 
-function sendJoinChannelMessage(ctx, missingChannels) {
-  const channelList = missingChannels && missingChannels.length > 0 ? missingChannels : REQUIRED_CHANNELS;
-  const channelButtons = channelList.map(ch => [Markup.button.url('📢 Join ' + ch.name, ch.url)]);
-  channelButtons.push([Markup.button.callback('✅ I Have Joined All Channels (Verify)', 'VERIFY_JOIN')]);
-
+function sendForceJoinMessage(ctx) {
+  const buttons = REQUIRED_CHANNELS.map(ch => [Markup.button.url(`📢 Join ${ch.name}`, ch.url)]);
+  buttons.push([Markup.button.callback('✅ I Have Joined (Verify)', 'VERIFY_CHANNELS')]);
   return ctx.reply(
-    "⚠️ <b>Access Required Before Using A T T S Bot!</b>\n\n" +
-    "To access our premium trading tools, wallet deposits, and instant orders, you must first join our official community channels:\n\n" +
-    "1️⃣ @abyssiniatradinget (Official Channel)\n" +
-    "2️⃣ @abyssiniachat (Trading Discussion Community)\n" +
-    "3️⃣ @abyssiniattstore (Store & Updates)\n\n" +
-    "👉 Click the buttons below to join each channel, then click Verify:",
-    { parse_mode: 'HTML', ...Markup.inlineKeyboard(channelButtons) }
+    "⚠️ <b>Welcome to ATTS!</b>\n\nPlease join our official community channels below before accessing trading tools and your wallet:",
+    { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) }
   );
 }
 
 // ============================================================
-// 🏠 MAIN MENU (EXACT ATTS WALLET & BUTTON GRID LAYOUT)
+// 🏠 MAIN MENU (EXACT WALLET CARD & BUTTON ALIGNMENT)
 // ============================================================
 
 async function sendMainMenu(ctx) {
   const balance = await getUserBalance(ctx.from.id);
 
   return ctx.reply(
-    "💰   <b>MY WALLET</b>\n\n" +
+    "💰 <b>MY WALLET</b>\n\n" +
     "<b>Available Balance:</b>\n" +
     `<b>${balance.toLocaleString()} ETB</b>\n\n` +
     "Use your wallet balance to purchase or renew trading tools instantly.",
@@ -455,35 +287,32 @@ async function sendMainMenu(ctx) {
 }
 
 // ============================================================
-// 💰 CUSTOMER WALLET ACTIONS
+// 👛 WALLET MENU & DEPOSIT SYSTEM
 // ============================================================
 
 bot.action('ACTION_WALLET', async (ctx) => {
-  try {
-    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
-    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
+  const isJoined = await checkChannels(ctx, ctx.from.id);
+  if (!isJoined) return sendForceJoinMessage(ctx);
 
-    delete userSessions[ctx.from.id];
-    const balance = await getUserBalance(ctx.from.id);
+  const balance = await getUserBalance(ctx.from.id);
+  delete userSessions[ctx.from.id];
 
-    return ctx.reply(
-      "💰   <b>MY WALLET</b>\n\n" +
-      "<b>Available Balance:</b>\n" +
-      `<b>${balance.toLocaleString()} ETB</b>\n\n` +
-      "Use your wallet balance to purchase or renew trading tools instantly.",
-      {
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
-          [Markup.button.callback('📜 Transaction History', 'WALLET_HISTORY'), Markup.button.callback('🛒 Buy with Wallet', 'ACTION_SHOP')],
-          [Markup.button.callback('🏠 Back to Menu', 'ACTION_MAIN_MENU')]
-        ])
-      }
-    );
-  } catch (err) {}
+  return ctx.reply(
+    `💰 <b>MY WALLET</b>\n\n` +
+    `<b>Available Balance:</b>\n` +
+    `<b>${balance.toLocaleString()} ETB</b>\n\n` +
+    `Use your wallet balance to purchase or renew trading tools instantly.`,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
+        [Markup.button.callback('📜 Transaction History', 'WALLET_HISTORY'), Markup.button.callback('🛒 Buy with Wallet', 'ACTION_SHOP')],
+        [Markup.button.callback('🏠 Back to Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
+  );
 });
 
-// Deposit Amount Selection
 bot.action('WALLET_DEPOSIT', async (ctx) => {
   delete userSessions[ctx.from.id];
   return ctx.reply(
@@ -501,13 +330,10 @@ bot.action('WALLET_DEPOSIT', async (ctx) => {
   );
 });
 
-// Custom Deposit Input
 bot.action('DEP_AMT_CUSTOM', (ctx) => {
-  userSessions[ctx.from.id] = { awaitingCustomDeposit: true };
+  userSessions[ctx.from.id] = { awaitingCustomAmount: true };
   return ctx.reply(
-    "💵 <b>Custom Deposit Amount</b>\n\n" +
-    "Please type the amount in ETB you want to add to your wallet:\n" +
-    "(Minimum deposit: <b>100 ETB</b>)",
+    "💵 <b>Custom Deposit Amount</b>\n\nPlease enter the amount in ETB you want to add to your wallet (Minimum: 100 ETB):",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -517,82 +343,78 @@ bot.action('DEP_AMT_CUSTOM', (ctx) => {
   );
 });
 
-// Preset Amount Clicked
 bot.action(/^DEP_AMT_(\d+)$/, (ctx) => {
   const amount = parseInt(ctx.match[1], 10);
-  return showDepositMethodSelection(ctx, amount);
+  return showDepositPaymentMethods(ctx, amount);
 });
 
-function showDepositMethodSelection(ctx, amount) {
+function showDepositPaymentMethods(ctx, amount) {
   return ctx.reply(
-    "💳 <b>DEPOSIT REQUEST</b>\n\n" +
-    `<b>Amount:</b> <b>${amount.toLocaleString()} ETB</b>\n\n` +
-    "Please choose your preferred payment method below:",
+    `💳 <b>DEPOSIT REQUEST</b>\n\n<b>Amount:</b> <b>${amount.toLocaleString()} ETB</b>\n\nPlease choose your preferred payment method below:`,
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('📱 Telebirr', `DEP_METHOD_TELEBIRR_${amount}`)],
-        [Markup.button.callback('💎 Binance Pay', `DEP_METHOD_BINANCE_${amount}`)],
+        [Markup.button.callback('📱 Telebirr', `DEP_PAY_TELEBIRR_${amount}`)],
+        [Markup.button.callback('💎 Binance Pay', `DEP_PAY_BINANCE_${amount}`)],
         [Markup.button.callback('⬅️ Back to Amounts', 'WALLET_DEPOSIT')]
       ])
     }
   );
 }
 
-// Payment method selected -> Provide transfer instructions
-bot.action(/^DEP_METHOD_(TELEBIRR|BINANCE)_(\d+)$/, (ctx) => {
+bot.action(/^DEP_PAY_(TELEBIRR|BINANCE)_(\d+)$/, (ctx) => {
   const method = ctx.match[1];
   const amount = parseInt(ctx.match[2], 10);
 
   userSessions[ctx.from.id] = {
-    type: 'DEPOSIT',
+    type: 'WALLET_DEPOSIT',
     amount: amount,
     method: method === 'TELEBIRR' ? 'Telebirr' : 'Binance'
   };
 
-  let payText = '';
+  let details = '';
   if (method === 'TELEBIRR') {
-    payText = `📱 <b>Telebirr Payment Details</b>\n\n` +
-              `• Phone Number: <code>${PAYMENT_INFO.telebirr.number}</code> (Tap to copy)\n` +
-              `• Account Name: <code>${PAYMENT_INFO.telebirr.name}</code>\n` +
-              `• Amount: <code>${amount.toLocaleString()} ETB</code>`;
+    details = `📱 <b>Telebirr Number:</b> <code>${PAYMENT_INFO.telebirr.number}</code>\n👤 <b>Account Name:</b> ${PAYMENT_INFO.telebirr.name}`;
   } else {
-    payText = `💎 <b>Binance Payment Details</b>\n\n` +
-              `• Binance Pay ID: <code>${PAYMENT_INFO.binance.id}</code> (Tap to copy)\n` +
-              `• Payee Name: <code>${PAYMENT_INFO.binance.name}</code>\n` +
-              `• Amount: <code>${(amount / 100).toFixed(1)} USDT</code>`;
+    details = `💎 <b>Binance Pay ID:</b> <code>${PAYMENT_INFO.binance.payId}</code>\n👤 <b>Payee:</b> ${PAYMENT_INFO.binance.name}`;
   }
 
-  payText += `\n\n📤 <b>Submit Payment Proof:</b>\n` +
-             `After completing the payment, please upload your payment screenshot (receipt) right here in this chat.`;
-
-  return ctx.reply(payText, {
-    parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('❌ Cancel Deposit', 'ACTION_WALLET')]
-    ])
-  });
+  return ctx.reply(
+    `💳 <b>DEPOSIT INSTRUCTIONS</b>\n\n` +
+    `<b>Amount:</b> <b>${amount.toLocaleString()} ETB</b>\n\n` +
+    `${details}\n\n` +
+    `📤 <b>Submit Payment Proof:</b>\n` +
+    `After sending the payment, upload your payment screenshot (receipt) right here in this chat.`,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('❌ Cancel Deposit', 'ACTION_WALLET')]
+      ])
+    }
+  );
 });
 
-// Wallet Transaction History
+// Transaction History
 bot.action('WALLET_HISTORY', async (ctx) => {
   const userId = ctx.from.id;
   const balance = await getUserBalance(userId);
-  const txList = await getWalletTransactions(userId);
 
-  let text = `📜 <b>WALLET TRANSACTION HISTORY</b>\n\n` +
-             `<b>Available Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n`;
+  let txList = [];
+  if (isMongoConnected) {
+    txList = await Transaction.find({ userId: String(userId) }).sort({ createdAt: -1 }).limit(8);
+  } else {
+    txList = memoryDb.transactions.filter(t => t.userId === String(userId)).slice(-8).reverse();
+  }
 
-  if (!txList || txList.length === 0) {
-    text += "No wallet transactions recorded yet. Make a deposit to fund your wallet!";
+  let text = `📜 <b>WALLET TRANSACTION HISTORY</b>\n\n<b>Current Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n`;
+  if (txList.length === 0) {
+    text += "No transactions recorded yet. Make a deposit to fund your wallet!";
   } else {
     txList.forEach((tx, idx) => {
       const sign = tx.amount >= 0 ? '+' : '';
       const icon = tx.amount >= 0 ? '🟢' : '🛒';
       const dateStr = new Date(tx.createdAt).toLocaleDateString();
-      text += `${idx + 1}. ${icon} <b>${sign}${tx.amount.toLocaleString()} ETB</b>\n` +
-              `   • ${tx.description || tx.type}\n` +
-              `   • Date: ${dateStr} | Balance: ${tx.balanceAfter.toLocaleString()} ETB\n\n`;
+      text += `${idx + 1}. ${icon} <b>${sign}${tx.amount.toLocaleString()} ETB</b> - ${tx.description || tx.type}\n   📅 ${dateStr} | Balance: ${tx.balanceAfter.toLocaleString()} ETB\n\n`;
     });
   }
 
@@ -606,59 +428,57 @@ bot.action('WALLET_HISTORY', async (ctx) => {
 });
 
 // ============================================================
-// 📊 TRADING TOOLS & WALLET CHECKOUT
+// 📊 TRADING TOOLS CATALOG & WALLET CHECKOUT
 // ============================================================
 
-const TOOLS_CATALOG = {
-  "fxr_month": { name: "🔄 Fxreplay Pro (Monthly)", price: 750 },
-  "fxr_2week": { name: "🔄 Fxreplay Pro (Two Weeks)", price: 450 },
-  "fxr_week": { name: "🔄 Fxreplay Pro (Weekly)", price: 250 },
-  "tv_ess": { name: "📈 TradingView Essential (1 Mo)", price: 1100 },
-  "tv_cme": { name: "📈 TradingView + CME Data (1 Mo)", price: 1350 }
+const TOOLS = {
+  FX_MONTH: { id: "fx_month", name: "Fxreplay Pro (Monthly)", price: 750 },
+  FX_2WEEK: { id: "fx_2week", name: "Fxreplay Pro (2 Weeks)", price: 450 },
+  FX_WEEK: { id: "fx_week", name: "Fxreplay Pro (Weekly)", price: 250 },
+  TV_ESS: { id: "tv_ess", name: "TradingView Essential", price: 1100 },
+  TV_CME: { id: "tv_cme", name: "TradingView + CME Data", price: 1350 }
 };
 
-bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
+bot.action('ACTION_SHOP', async (ctx) => {
   return ctx.reply(
     "📊 <b>A T T S Trading Tools Catalog</b>\n\n" +
     "Select a tool below to order or renew instantly with your wallet balance:",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Fxreplay Pro (Monthly) - 750 ETB', 'TOOL_fxr_month')],
-        [Markup.button.callback('🔄 Fxreplay Pro (2 Weeks) - 450 ETB', 'TOOL_fxr_2week')],
-        [Markup.button.callback('🔄 Fxreplay Pro (Weekly) - 250 ETB', 'TOOL_fxr_week')],
-        [Markup.button.callback('📈 TradingView Essential - 1,100 ETB', 'TOOL_tv_ess')],
-        [Markup.button.callback('📈 TradingView + CME Data - 1,350 ETB', 'TOOL_tv_cme')],
+        [Markup.button.callback('🔄 Fxreplay Pro (Monthly) - 750 ETB', 'BUY_FX_MONTH')],
+        [Markup.button.callback('🔄 Fxreplay Pro (2 Weeks) - 450 ETB', 'BUY_FX_2WEEK')],
+        [Markup.button.callback('🔄 Fxreplay Pro (Weekly) - 250 ETB', 'BUY_FX_WEEK')],
+        [Markup.button.callback('📈 TradingView Essential - 1,100 ETB', 'BUY_TV_ESS')],
+        [Markup.button.callback('📈 TradingView + CME Data - 1,350 ETB', 'BUY_TV_CME')],
         [Markup.button.callback('👛 View Wallet', 'ACTION_WALLET'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
 });
 
-bot.action(/^TOOL_(.+)$/, async (ctx) => {
+bot.action(/^BUY_(.+)$/, async (ctx) => {
   const toolKey = ctx.match[1];
-  const tool = TOOLS_CATALOG[toolKey] || TOOLS_CATALOG["fxr_month"];
+  const tool = TOOLS[toolKey] || TOOLS.FX_MONTH;
   const balance = await getUserBalance(ctx.from.id);
 
   userSessions[ctx.from.id] = {
     type: 'ORDER',
     tool: tool.name,
-    finalPrice: tool.price,
-    toolKey: toolKey
+    price: tool.price
   };
 
   return ctx.reply(
-    "🧾 <b>Order Summary:</b>\n\n" +
+    `🧾 <b>Order Summary:</b>\n\n` +
     `📦 <b>Product:</b> ${tool.name}\n` +
     `💰 <b>Price:</b> <b>${tool.price.toLocaleString()} ETB</b>\n` +
     `💳 <b>Your Wallet Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n` +
-    "Please choose your payment method below:",
+    `Please select payment method:`,
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_${toolKey}`)],
-        [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR')],
-        [Markup.button.callback('💎 Pay via Binance', 'PAY_BINANCE')],
+        [Markup.button.callback('📱 Pay via Telebirr', `PAY_DIRECT_TELEBIRR_${toolKey}`)],
         [Markup.button.callback('⬅️ Back to Tools', 'ACTION_SHOP')]
       ])
     }
@@ -668,33 +488,42 @@ bot.action(/^TOOL_(.+)$/, async (ctx) => {
 // Pay with Wallet execution
 bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
   const toolKey = ctx.match[1];
-  const tool = TOOLS_CATALOG[toolKey] || TOOLS_CATALOG["fxr_month"];
+  const tool = TOOLS[toolKey] || TOOLS.FX_MONTH;
   const userId = ctx.from.id;
   const username = ctx.from.username || 'Trader';
 
-  const newBalance = await debitWallet(userId, tool.price, `Purchase: ${tool.name}`);
+  const newBalance = await debitUserWallet(userId, tool.price, `Purchase: ${tool.name}`);
 
   if (newBalance === null) {
-    const currentBalance = await getUserBalance(userId);
+    const currentBal = await getUserBalance(userId);
     return ctx.reply(
-      "⚠️ <b>INSUFFICIENT WALLET BALANCE</b>\n\n" +
+      `⚠️ <b>INSUFFICIENT WALLET BALANCE</b>\n\n` +
       `<b>Product Price:</b> ${tool.price.toLocaleString()} ETB\n` +
-      `<b>Your Balance:</b> ${currentBalance.toLocaleString()} ETB\n` +
-      `<b>Shortage:</b> ${(tool.price - currentBalance).toLocaleString()} ETB\n\n` +
-      "Please add funds to your wallet or pay via Telebirr:",
+      `<b>Your Balance:</b> ${currentBal.toLocaleString()} ETB\n` +
+      `<b>Shortage:</b> ${(tool.price - currentBal).toLocaleString()} ETB\n\n` +
+      `Please deposit additional funds or pay directly via Telebirr:`,
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
           [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
-          [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR')],
-          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]
+          [Markup.button.callback('📱 Pay via Telebirr', `PAY_DIRECT_TELEBIRR_${toolKey}`)],
+          [Markup.button.callback('⬅️ Back', 'ACTION_SHOP')]
         ])
       }
     );
   }
 
-  // Record order
-  await addPendingOrder(userId, username, tool.name, 'Standard', tool.price, 'Wallet');
+  // Create order
+  if (isMongoConnected) {
+    await Order.create({
+      userId: String(userId),
+      username: username,
+      toolName: tool.name,
+      price: `${tool.price} ETB (Wallet)`,
+      method: 'Wallet',
+      status: 'Pending'
+    });
+  }
 
   // Notify Admin
   if (ADMIN_CHAT_ID) {
@@ -702,12 +531,12 @@ bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
       await bot.telegram.sendMessage(
         ADMIN_CHAT_ID,
         `🚨 <b>NEW ORDER PAID VIA WALLET!</b>\n\n` +
-        `👤 Customer: @${username}\n` +
-        `🆔 User ID: <code>${userId}</code>\n` +
-        `📦 Product: <b>${tool.name}</b>\n` +
-        `💰 Amount: <b>${tool.price} ETB (Wallet Paid)</b>\n` +
-        `💳 Remaining Wallet: <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
-        `💡 Deliver Credentials:\n` +
+        `👤 <b>Customer:</b> @${username}\n` +
+        `🆔 <b>User ID:</b> <code>${userId}</code>\n` +
+        `📦 <b>Product:</b> <b>${tool.name}</b>\n` +
+        `💰 <b>Amount:</b> ${tool.price} ETB (Paid from Wallet)\n` +
+        `💳 <b>Remaining Balance:</b> ${newBalance.toLocaleString()} ETB\n\n` +
+        `💡 <b>Deliver Credentials:</b>\n` +
         `<code>/send ${userId} Email: ... | Pass: ...</code>`,
         { parse_mode: 'HTML' }
       );
@@ -719,8 +548,8 @@ bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
     `📦 <b>Product:</b> ${tool.name}\n` +
     `💰 <b>Deducted:</b> -${tool.price.toLocaleString()} ETB\n` +
     `💳 <b>Remaining Balance:</b> <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
-    `✅ Your order is confirmed. Credentials will be delivered within 5–15 minutes!\n\n` +
-    `Track your order in <b>📦 My Orders</b>.`,
+    `✅ Your order has been recorded. Admin will deliver your access credentials within 5–15 minutes!\n\n` +
+    `You can track your order status in <b>📦 My Orders</b>.`,
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -733,47 +562,39 @@ bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
 });
 
 // Direct payment chosen
-bot.action(/PAY_(TELEBIRR|BINANCE)/, (ctx) => {
-  const method = ctx.match[1];
-  const session = userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
-  session.method = method;
+bot.action(/^PAY_DIRECT_TELEBIRR_(.+)$/, (ctx) => {
+  const toolKey = ctx.match[1];
+  const tool = TOOLS[toolKey] || TOOLS.FX_MONTH;
+  userSessions[ctx.from.id] = { type: 'ORDER', tool: tool.name, price: tool.price, method: 'Telebirr' };
 
-  let payText = '';
-  if (method === 'TELEBIRR') {
-    payText = `📱 <b>Telebirr Payment Details</b>\n\n` +
-              `• Phone Number: <code>${PAYMENT_INFO.telebirr.number}</code>\n` +
-              `• Account Name: <code>${PAYMENT_INFO.telebirr.name}</code>\n` +
-              `• Amount: <code>${session.finalPrice || 750} ETB</code>\n\n` +
-              `⚠️ After completing payment, upload your transfer screenshot right here.`;
-  } else {
-    payText = `💎 <b>Binance Payment Details</b>\n\n` +
-              `• Binance Pay ID: <code>${PAYMENT_INFO.binance.id}</code>\n` +
-              `• Payee Name: <code>${PAYMENT_INFO.binance.name}</code>\n` +
-              `• Amount: <code>${((session.finalPrice || 750) / 100).toFixed(1)} USDT</code>\n\n` +
-              `⚠️ After transferring via Binance Pay, upload your confirmation screenshot here.`;
-  }
-
-  ctx.reply(payText, { parse_mode: 'HTML' });
+  return ctx.reply(
+    `📱 <b>Telebirr Payment Details</b>\n\n` +
+    `• Number: <code>${PAYMENT_INFO.telebirr.number}</code>\n` +
+    `• Account Name: <code>${PAYMENT_INFO.telebirr.name}</code>\n` +
+    `• Amount: <code>${tool.price.toLocaleString()} ETB</code>\n\n` +
+    `⚠️ Upload your payment screenshot right here once completed.`,
+    { parse_mode: 'HTML' }
+  );
 });
 
 // ============================================================
-// 📸 RECEIPT UPLOAD & INPUT HANDLERS
+// 📸 RECEIPT UPLOAD & INPUT HANDLER
 // ============================================================
 
 bot.on('text', async (ctx, next) => {
   const userId = ctx.from.id;
   const session = userSessions[userId];
 
-  if (session && session.awaitingCustomDeposit) {
+  if (session && session.awaitingCustomAmount) {
     const text = ctx.message.text.trim();
     const amount = parseInt(text.replace(/[^0-9]/g, ''), 10);
 
     if (isNaN(amount) || amount < 100) {
-      return ctx.reply("❌ Invalid amount. Minimum deposit is 100 ETB. Please type a valid number (e.g. 500):");
+      return ctx.reply("❌ Invalid amount. Minimum deposit is 100 ETB. Please enter a valid number (e.g. 500):");
     }
 
-    delete session.awaitingCustomDeposit;
-    return showDepositMethodSelection(ctx, amount);
+    delete session.awaitingCustomAmount;
+    return showDepositPaymentMethods(ctx, amount);
   }
 
   return next();
@@ -783,36 +604,60 @@ bot.on('photo', async (ctx) => {
   try {
     if (ctx.chat.type !== 'private') return;
 
-    const user = ctx.from;
-    const session = userSessions[user.id] || {};
+    const userId = ctx.from.id;
+    const username = ctx.from.username || 'NoUsername';
     const photo = ctx.message.photo.pop();
+    const session = userSessions[userId] || {};
 
-    if (session.type === 'DEPOSIT') {
+    if (session.type === 'WALLET_DEPOSIT') {
       const depositAmount = session.amount || 500;
       const method = session.method || 'Telebirr';
       const refCode = `DEP-${Math.floor(100000 + Math.random() * 900000)}`;
 
-      const dep = await createDepositRequest(user.id, user.username, depositAmount, method, refCode, photo.file_id);
-      const depId = String(dep._id || refCode);
-      delete userSessions[user.id];
+      let depositDoc = null;
+      if (isMongoConnected) {
+        depositDoc = await Deposit.create({
+          userId: String(userId),
+          username: username,
+          amount: depositAmount,
+          method: method,
+          refCode: refCode,
+          receiptPhotoId: photo.file_id,
+          status: 'PENDING'
+        });
+      } else {
+        depositDoc = {
+          id: Date.now().toString(),
+          userId: String(userId),
+          username: username,
+          amount: depositAmount,
+          method: method,
+          refCode: refCode,
+          receiptPhotoId: photo.file_id,
+          status: 'PENDING'
+        };
+        memoryDb.deposits.push(depositDoc);
+      }
+
+      delete userSessions[userId];
 
       if (ADMIN_CHAT_ID) {
         try {
+          const docId = depositDoc._id ? String(depositDoc._id) : depositDoc.id;
           await bot.telegram.sendPhoto(
             ADMIN_CHAT_ID,
             photo.file_id,
             {
               caption: `💳 <b>PENDING WALLET DEPOSIT</b>\n\n` +
-                       `👤 <b>User:</b> @${user.username || 'NoUsername'}\n` +
-                       `🆔 <b>User ID:</b> <code>${user.id}</code>\n` +
+                       `👤 <b>Customer:</b> @${username}\n` +
+                       `🆔 <b>User ID:</b> <code>${userId}</code>\n` +
                        `💰 <b>Amount:</b> <b>${depositAmount.toLocaleString()} ETB</b>\n` +
                        `💳 <b>Method:</b> ${method}\n` +
-                       `🔖 <b>Reference:</b> <code>${refCode}</code>\n\n` +
-                       `Click below to approve or reject:`,
+                       `🔖 <b>Ref Code:</b> <code>${refCode}</code>`,
               parse_mode: 'HTML',
               ...Markup.inlineKeyboard([
-                [Markup.button.callback(`✅ Approve (+${depositAmount} ETB)`, `DEP_APPROVE_${depId}`)],
-                [Markup.button.callback('❌ Reject Deposit', `DEP_REJECT_${depId}`)]
+                [Markup.button.callback(`✅ Approve (+${depositAmount} ETB)`, `DEP_APPROVE_${docId}`)],
+                [Markup.button.callback('❌ Reject Deposit', `DEP_REJECT_${docId}`)]
               ])
             }
           );
@@ -823,7 +668,7 @@ bot.on('photo', async (ctx) => {
         `⏳ <b>DEPOSIT PENDING</b>\n\n` +
         `<b>Amount:</b> <b>${depositAmount.toLocaleString()} ETB</b>\n` +
         `<b>Reference:</b> <code>${refCode}</code>\n\n` +
-        `Your payment is waiting for verification.\n` +
+        `Your payment proof is waiting for verification.\n` +
         `You will receive a notification once reviewed.`,
         {
           parse_mode: 'HTML',
@@ -833,23 +678,36 @@ bot.on('photo', async (ctx) => {
         }
       );
     } else {
-      const toolName = session.tool || 'Trading Tool Access';
-      const price = session.finalPrice || 750;
+      const toolName = session.tool || 'Trading Tool';
+      const price = session.price || 'Direct';
 
-      await addPendingOrder(user.id, user.username, toolName, 'Standard', price, session.method || 'Direct');
+      if (isMongoConnected) {
+        await Order.create({
+          userId: String(userId),
+          username: username,
+          toolName: toolName,
+          price: `${price} ETB`,
+          receiptPhotoId: photo.file_id,
+          status: 'Pending'
+        });
+      }
 
       if (ADMIN_CHAT_ID) {
         try {
-          await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
-            caption: `🚨 <b>DIRECT ORDER RECEIPT RECEIVED</b>\n\n` +
-                     `👤 Customer: @${user.username || 'NoUsername'}\n` +
-                     `🆔 User ID: <code>${user.id}</code>\n` +
-                     `📦 Tool: <b>${toolName}</b>\n` +
-                     `💰 Amount: <b>${price} ETB</b>\n\n` +
-                     `Deliver credentials:\n<code>/send ${user.id} Email: ... | Pass: ...</code>`,
-            parse_mode: 'HTML'
-          });
-        } catch (err) {}
+          await bot.telegram.sendPhoto(
+            ADMIN_CHAT_ID,
+            photo.file_id,
+            {
+              caption: `🚨 <b>NEW DIRECT ORDER RECEIPT</b>\n\n` +
+                       `👤 <b>Customer:</b> @${username}\n` +
+                       `🆔 <b>User ID:</b> <code>${userId}</code>\n` +
+                       `📦 <b>Tool:</b> ${toolName}\n` +
+                       `💰 <b>Price:</b> ${price} ETB\n\n` +
+                       `💡 Deliver: <code>/send ${userId} Email: ... | Pass: ...</code>`,
+              parse_mode: 'HTML'
+            }
+          );
+        } catch (e) {}
       }
 
       return ctx.reply(
@@ -868,22 +726,17 @@ bot.on('photo', async (ctx) => {
   } catch (err) {}
 });
 
-// ============================================================
-// 👑 ADMIN WALLET DEPOSIT APPROVAL & REJECTION
-// ============================================================
-
+// Admin Approval/Rejection Actions
 bot.action(/^DEP_APPROVE_(.+)$/, async (ctx) => {
   if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('Unauthorized');
 
-  const depId = ctx.match[1];
+  const depositId = ctx.match[1];
   let deposit = null;
 
   if (isMongoConnected) {
-    try {
-      deposit = await Deposit.findById(depId) || await Deposit.findOne({ refCode: depId });
-    } catch (e) {}
+    deposit = await Deposit.findById(depositId);
   } else {
-    deposit = fallbackDb.deposits.find(d => d._id === depId || d.refCode === depId);
+    deposit = memoryDb.deposits.find(d => d.id === depositId);
   }
 
   if (!deposit || deposit.status === 'APPROVED') {
@@ -891,14 +744,14 @@ bot.action(/^DEP_APPROVE_(.+)$/, async (ctx) => {
   }
 
   deposit.status = 'APPROVED';
-  deposit.processedAt = new Date();
+  deposit.reviewedAt = new Date();
   if (isMongoConnected) await deposit.save();
 
-  const newBalance = await creditWallet(deposit.userId, deposit.amount, `Deposit Approved (${deposit.refCode})`, 'DEPOSIT');
+  const newBal = await creditUserWallet(deposit.userId, deposit.amount, `Wallet Deposit (Ref: ${deposit.refCode})`);
 
   try {
     ctx.editMessageCaption(
-      (ctx.update.callback_query.message.caption || '') + `\n\n✅ <b>STATUS: APPROVED (+${deposit.amount} ETB)</b>\n💳 New Balance: ${newBalance.toLocaleString()} ETB`,
+      (ctx.update.callback_query.message.caption || '') + `\n\n✅ <b>STATUS: APPROVED (+${deposit.amount} ETB)</b>\n💳 New Balance: ${newBal.toLocaleString()} ETB`,
       { parse_mode: 'HTML' }
     );
   } catch (e) {}
@@ -906,11 +759,11 @@ bot.action(/^DEP_APPROVE_(.+)$/, async (ctx) => {
   try {
     await bot.telegram.sendMessage(
       deposit.userId,
-      "✅ <b>WALLET DEPOSIT APPROVED</b>\n\n" +
-      "Your wallet has been credited successfully.\n\n" +
+      `✅ <b>WALLET DEPOSIT APPROVED</b>\n\n` +
+      `Your wallet has been credited successfully.\n\n` +
       `💰 <b>Added:</b> +${deposit.amount.toLocaleString()} ETB\n` +
-      `💳 <b>New Balance:</b> <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
-      "Thank you for using ATTS.",
+      `💳 <b>New Balance:</b> <b>${newBal.toLocaleString()} ETB</b>\n\n` +
+      `Thank you for using ATTS.`,
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
@@ -927,21 +780,19 @@ bot.action(/^DEP_APPROVE_(.+)$/, async (ctx) => {
 bot.action(/^DEP_REJECT_(.+)$/, async (ctx) => {
   if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('Unauthorized');
 
-  const depId = ctx.match[1];
+  const depositId = ctx.match[1];
   let deposit = null;
 
   if (isMongoConnected) {
-    try {
-      deposit = await Deposit.findById(depId) || await Deposit.findOne({ refCode: depId });
-    } catch (e) {}
+    deposit = await Deposit.findById(depositId);
   } else {
-    deposit = fallbackDb.deposits.find(d => d._id === depId || d.refCode === depId);
+    deposit = memoryDb.deposits.find(d => d.id === depositId);
   }
 
   if (!deposit) return ctx.answerCbQuery('Deposit not found.');
 
   deposit.status = 'REJECTED';
-  deposit.processedAt = new Date();
+  deposit.reviewedAt = new Date();
   if (isMongoConnected) await deposit.save();
 
   try {
@@ -954,9 +805,9 @@ bot.action(/^DEP_REJECT_(.+)$/, async (ctx) => {
   try {
     await bot.telegram.sendMessage(
       deposit.userId,
-      "❌ <b>DEPOSIT REJECTED</b>\n\n" +
+      `❌ <b>DEPOSIT REJECTED</b>\n\n` +
       `Your deposit request for <b>${deposit.amount.toLocaleString()} ETB</b> was rejected.\n\n` +
-      "<b>Reason:</b>\nPayment could not be verified with official bank records.\n\n`" +
+      `<b>Reason:</b>\nPayment could not be verified with official bank records.\n\n` +
       `Contact @${SUPPORT_USERNAME} if you have any questions.`,
       { parse_mode: 'HTML' }
     );
@@ -965,118 +816,31 @@ bot.action(/^DEP_REJECT_(.+)$/, async (ctx) => {
   return ctx.answerCbQuery('Deposit rejected.');
 });
 
-// ============================================================
-// 👑 ADMIN COMMANDS (/send, /credit, /debit, /checkwallet)
-// ============================================================
-
+// Admin Command /send
 bot.command('send', async (ctx) => {
-  try {
-    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin access only.');
+  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('⛔ Admin only.');
 
-    const parts = ctx.message.text.trim().split(' ');
-    if (parts.length < 3) {
-      return ctx.reply('Usage:\n/send <USER_ID> <Credentials>\n\nExample:\n/send 5056286354 Email: ... | Pass: ...');
-    }
-
-    const targetUserId = parts[1];
-    let customMessage = '';
-    let durationDays = null;
-
-    if (/^\d+d$/i.test(parts[2])) {
-      durationDays = parseInt(parts[2].replace(/d/i, ''), 10);
-      customMessage = parts.slice(3).join(' ');
-    } else {
-      customMessage = parts.slice(2).join(' ');
-    }
-
-    const deliveryNotification = "✅ <b>Order Activated</b>\n\n" +
-                                 "Your order is now active.\n\n" +
-                                 "🔐 <b>Login Details</b>\n" +
-                                 `<code>${customMessage}</code>\n\n` +
-                                 "📂 <b>My Orders → 🔑 My Access</b>\n" +
-                                 "🔒 Keep your credentials secure.\n\n" +
-                                 "Need assistance?\n" +
-                                 "📩 @" + SUPPORT_USERNAME;
-
-    await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
-    await activateOrder(targetUserId, customMessage, durationDays);
-
-    ctx.reply(`✅ Delivered credentials to User ID ${targetUserId}!`);
-  } catch (err) {
-    ctx.reply("Error: " + err.message);
+  const parts = ctx.message.text.trim().split(' ');
+  if (parts.length < 3) {
+    return ctx.reply("⚠️ Usage: /send <userId> <credentials>\nExample: /send 583928172 Email: ... | Pass: ...");
   }
-});
-
-bot.command('credit', async (ctx) => {
-  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin only.');
-  const parts = ctx.message.text.trim().split(' ');
-  if (parts.length < 3) return ctx.reply('Usage: /credit <USER_ID> <AMOUNT> [Reason]');
 
   const targetUserId = parts[1];
-  const amount = parseInt(parts[2], 10);
-  const reason = parts.slice(3).join(' ') || 'Admin Manual Credit';
-
-  if (isNaN(amount) || amount <= 0) return ctx.reply('Invalid amount.');
-  const newBal = await creditWallet(targetUserId, amount, reason, 'ADMIN_CREDIT');
+  const credentials = parts.slice(2).join(' ');
 
   try {
     await bot.telegram.sendMessage(
       targetUserId,
-      `✅ <b>WALLET CREDITED BY ADMIN</b>\n\n` +
-      `💰 <b>Amount:</b> +${amount.toLocaleString()} ETB\n` +
-      `💳 <b>New Balance:</b> <b>${newBal.toLocaleString()} ETB</b>\n` +
-      `📝 <b>Note:</b> ${reason}`,
+      `🎉 <b>ORDER ACTIVATED</b>\n\n` +
+      `🔑 <b>Your Login Credentials:</b>\n<code>${credentials}</code>\n\n` +
+      `📂 View under <b>📦 My Orders → 🔑 My Access</b>\n` +
+      `🔒 Keep your credentials confidential.`,
       { parse_mode: 'HTML' }
     );
-  } catch (e) {}
-
-  ctx.reply(`✅ Credited +${amount} ETB to user ${targetUserId}. New Balance: ${newBal} ETB`);
-});
-
-bot.command('debit', async (ctx) => {
-  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin only.');
-  const parts = ctx.message.text.trim().split(' ');
-  if (parts.length < 3) return ctx.reply('Usage: /debit <USER_ID> <AMOUNT> [Reason]');
-
-  const targetUserId = parts[1];
-  const amount = parseInt(parts[2], 10);
-  const reason = parts.slice(3).join(' ') || 'Admin Manual Debit';
-
-  if (isNaN(amount) || amount <= 0) return ctx.reply('Invalid amount.');
-  const newBal = await debitWallet(targetUserId, amount, reason, 'ADMIN_DEBIT');
-  if (newBal === null) return ctx.reply('❌ Insufficient user balance to debit that amount.');
-
-  try {
-    await bot.telegram.sendMessage(
-      targetUserId,
-      `⚠️ <b>WALLET DEBITED BY ADMIN</b>\n\n` +
-      `💰 <b>Amount:</b> -${amount.toLocaleString()} ETB\n` +
-      `💳 <b>New Balance:</b> <b>${newBal.toLocaleString()} ETB</b>\n` +
-      `📝 <b>Note:</b> ${reason}`,
-      { parse_mode: 'HTML' }
-    );
-  } catch (e) {}
-
-  ctx.reply(`✅ Debited -${amount} ETB from user ${targetUserId}. New Balance: ${newBal} ETB`);
-});
-
-bot.command('checkwallet', async (ctx) => {
-  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin only.');
-  const parts = ctx.message.text.trim().split(' ');
-  if (parts.length < 2) return ctx.reply('Usage: /checkwallet <USER_ID>');
-
-  const targetUserId = parts[1];
-  const bal = await getUserBalance(targetUserId);
-  const orders = await getUserOrders(targetUserId);
-  const txs = await getWalletTransactions(targetUserId);
-
-  ctx.reply(
-    `👤 <b>WALLET PROFILE (ID: ${targetUserId})</b>\n\n` +
-    `💰 <b>Current Balance:</b> <b>${bal.toLocaleString()} ETB</b>\n` +
-    `📦 <b>Total Orders:</b> ${orders.length}\n` +
-    `📜 <b>Transactions Logged:</b> ${txs.length}`,
-    { parse_mode: 'HTML' }
-  );
+    ctx.reply(`✅ Credentials delivered to ${targetUserId}!`);
+  } catch (err) {
+    ctx.reply(`❌ Failed: ${err.message}`);
+  }
 });
 
 // ============================================================
@@ -1084,70 +848,50 @@ bot.command('checkwallet', async (ctx) => {
 // ============================================================
 
 bot.start(async (ctx) => {
-  const userId = ctx.from.id;
-  const startPayload = ctx.message.text.split(' ')[1];
-  let refId = null;
-
-  if (startPayload && startPayload.startsWith('ref_')) {
-    refId = startPayload.replace('ref_', '');
-    if (refId !== String(userId)) {
-      try {
-        await bot.telegram.sendMessage(
-          refId,
-          "🎉 <b>New trader joined via your referral link!</b>\n\nUser: @" + (ctx.from.username || 'Trader'),
-          { parse_mode: 'HTML' }
-        );
-      } catch (e) {}
-    }
-  }
-
-  await recordUser(userId, ctx.from.username, refId);
-
-  const { allJoined, missing } = await checkAllChannelMemberships(ctx, userId);
-  if (!allJoined) return sendJoinChannelMessage(ctx, missing);
-
+  await getOrCreateUser(ctx.from.id, ctx.from.username, ctx.from.first_name);
+  const isJoined = await checkChannels(ctx, ctx.from.id);
+  if (!isJoined) return sendForceJoinMessage(ctx);
   return sendMainMenu(ctx);
 });
 
-bot.action('VERIFY_JOIN', async (ctx) => {
-  const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
-  if (allJoined) {
+bot.action('VERIFY_CHANNELS', async (ctx) => {
+  const isJoined = await checkChannels(ctx, ctx.from.id);
+  if (isJoined) {
     try { await ctx.deleteMessage(); } catch (e) {}
-    ctx.reply("🎉 <b>Verification Successful!</b> Welcome to ATTS.", { parse_mode: 'HTML' });
+    ctx.reply("🎉 Verification successful! Welcome to ATTS.");
     return sendMainMenu(ctx);
   } else {
-    const remaining = missing.map(m => m.username).join(', ');
-    return ctx.answerCbQuery("❌ Please join all channels first: " + remaining, { show_alert: true });
+    return ctx.answerCbQuery("❌ Please make sure to join all 3 channels before proceeding!", { show_alert: true });
   }
 });
 
 bot.action('ACTION_MY_ORDERS', async (ctx) => {
-  const orders = await getUserOrders(ctx.from.id);
-  const activeOrders = orders.filter(o => o.status === 'Active');
+  let orders = [];
+  if (isMongoConnected) {
+    orders = await Order.find({ userId: String(ctx.from.id) }).sort({ createdAt: -1 });
+  } else {
+    orders = memoryDb.orders.filter(o => o.userId === String(ctx.from.id));
+  }
 
-  let text = `📦 <b>My Orders Dashboard</b>\n\n` +
-             `• Active Subscriptions: <b>${activeOrders.length}</b>\n` +
-             `• Total Orders: <b>${orders.length}</b>\n\n`;
-
-  if (activeOrders.length > 0) {
-    text += "🟢 <b>ACTIVE ACCESS:</b>\n";
-    activeOrders.forEach((o, i) => {
-      text += `${i + 1}. <b>${o.tool}</b>\n   • Credentials: <code>${o.credentials || 'Active'}</code>\n\n`;
+  let text = `📦 <b>My Orders Dashboard</b>\n\n• Total Orders: <b>${orders.length}</b>\n\n`;
+  if (orders.length > 0) {
+    orders.forEach((o, i) => {
+      text += `${i + 1}. <b>${o.toolName}</b>\n   • Status: ${o.status}\n   • Credentials: <code>${o.credentials || 'Pending Delivery'}</code>\n\n`;
     });
   } else {
-    text += "You currently have no active subscriptions.";
+    text += "You have no active orders yet.";
   }
 
   ctx.reply(text, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
-      [Markup.button.callback('📊 Browse Tools', 'ACTION_SHOP'), Markup.button.callback('👛 View Wallet', 'ACTION_WALLET')],
+      [Markup.button.callback('📊 Browse Tools', 'ACTION_SHOP'), Markup.button.callback('👛 My Wallet', 'ACTION_WALLET')],
       [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
     ])
   });
 });
 
-bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
+bot.action('ACTION_PRICING', (ctx) => {
   ctx.reply(
     "💳 <b>Official Pricing Overview:</b>\n\n" +
     "1. 📊 <b>TradingView Premium</b> — 🚫 Out of Stock\n" +
@@ -1182,23 +926,12 @@ bot.action('ACTION_OFFERS', (ctx) => {
 });
 
 bot.action('ACTION_REFERRAL', async (ctx) => {
-  const userId = ctx.from.id;
   const botInfo = await ctx.telegram.getMe();
-  const refLink = `https://t.me/${botInfo.username}?start=ref_${userId}`;
-
-  let count = 0;
-  if (isMongoConnected && User) {
-    try { count = await User.countDocuments({ referrerId: String(userId) }); } catch (e) {}
-  } else {
-    count = (fallbackDb.referrals[userId] || []).length;
-  }
+  const refLink = `https://t.me/${botInfo.username}?start=ref_${ctx.from.id}`;
 
   ctx.reply(
     "🤝 <b>Partner & Referral Program</b>\n\n" +
     "Invite fellow traders and earn 100 ETB Commission for every purchase they make!\n\n" +
-    "📊 <b>Your Performance:</b>\n" +
-    `• Traders Invited: ${count} people\n` +
-    `• Commission Earned: ${count * 100} ETB\n\n` +
     `🔗 <b>Your Link:</b>\n${refLink}`,
     {
       parse_mode: 'HTML',
@@ -1229,20 +962,6 @@ bot.action('ACTION_FAQ', (ctx) => {
 
 bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
 
-// Start Application
-async function startApplication() {
-  await connectToMongo();
-  try {
-    await bot.telegram.deleteWebhook({ drop_pending_updates: false });
-    await bot.launch();
-    console.log('🚀 ATTS Telegram Bot is LIVE and running!');
-  } catch (err) {
-    console.error('Launch error, retrying in 5s...', err.message);
-    setTimeout(startApplication, 5000);
-  }
-}
-
-startApplication();
-
+bot.launch().then(() => console.log('🚀 ATTS Telegram Store Bot is LIVE!'));
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
