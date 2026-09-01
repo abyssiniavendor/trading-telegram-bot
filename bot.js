@@ -1,6 +1,6 @@
 // ============================================================
-// 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// FULL COMPLETE PRODUCTION CODE: CATALOG + WALLET + BUTTONS
+// 🤖 ATTS - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
+// FULL COMPLETE PRODUCTION CODE: UPDATED WELCOME MESSAGE & BRANDING
 // ============================================================
 
 require('dotenv').config();
@@ -18,7 +18,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const REQUIRED_CHANNELS = [
   { username: "@abyssiniatradinget", name: "Abyssinia Trading Official", url: "https://t.me/abyssiniatradinget" },
   { username: "@abyssiniachat", name: "Abyssinia Trading Chat Community", url: "https://t.me/abyssiniachat" },
-  { username: "@abyssiniattstore", name: "A T T S Store Channel", url: "https://t.me/abyssiniattstore" }
+  { username: "@abyssiniattstore", name: "ATTS Store Channel", url: "https://t.me/abyssiniattstore" }
 ];
 
 if (!BOT_TOKEN) {
@@ -221,7 +221,7 @@ async function debitWallet(userId, amount, description = 'Product Purchase', typ
       await WalletTransaction.create({
         userId,
         type,
-        amount,
+        amount: -amount,
         balanceAfter: user.balance,
         description
       });
@@ -441,7 +441,7 @@ const PRODUCTS_CATALOG = {
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('A T T S Telegram Bot Server is LIVE 24/7!');
+  res.end('ATTS Telegram Bot Server is LIVE 24/7!');
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 Health check server active on port ${PORT}`);
 });
@@ -483,7 +483,7 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   channelButtons.push([Markup.button.callback('✅ I Have Joined All Channels (Verify)', 'VERIFY_JOIN')]);
 
   return ctx.reply(
-    "⚠️ <b>Access Required Before Using A T T S Bot!</b>\n\n" +
+    "⚠️ <b>Access Required Before Using ATTS Bot!</b>\n\n" +
     "To access our premium trading tools, wallet deposits, and instant orders, you must first join our official community channels:\n\n" +
     "1️⃣ @abyssiniatradinget (Official Channel)\n" +
     "2️⃣ @abyssiniachat (Trading Discussion Community)\n" +
@@ -494,14 +494,18 @@ function sendJoinChannelMessage(ctx, missingChannels) {
 }
 
 // ============================================================
-// 🏠 MAIN MENU (REQUESTED BUTTON ALIGNMENT + 💬 Live Support)
+// 🏠 MAIN MENU (UPDATED WELCOME MESSAGE & BUTTON ALIGNMENT)
 // ============================================================
 
-async function sendMainMenu(ctx) {
+function sendMainMenu(ctx) {
   return ctx.reply(
-    "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
-    "Your trusted source for genuine TradingView + CME market feeds, backtesting engines, and trading analytics in Ethiopia.\n\n" +
-    "Select an option below to get started:",
+    "👋 <b>Welcome to ATTS</b>\n" +
+    "Abyssinia Trading Tools Store\n\n" +
+    "Access premium trading tools, market data, backtesting platforms, and trading resources — all in one place, at the best price.\n\n" +
+    "⚡ Fast Delivery\n" +
+    "🛡️ Genuine Access\n" +
+    "💬 Dedicated Support\n\n" +
+    "Choose an option below to continue.",
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -521,7 +525,7 @@ async function sendMainMenu(ctx) {
 }
 
 // ============================================================
-// 📊 TRADING TOOLS CATALOG (RESTORED TO ORIGINAL HIERARCHY)
+// 📊 TRADING TOOLS CATALOG
 // ============================================================
 
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
@@ -530,7 +534,7 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
     if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
     return ctx.reply(
-      "📊 <b>A T T S Trading Tools</b>\n\n" +
+      "📊 <b>ATTS Trading Tools</b>\n\n" +
       "Select a trading tool below to view specifications, available plans, and instant pricing:",
       {
         parse_mode: 'HTML',
