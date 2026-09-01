@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 ATTS - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// FULL COMPLETE PRODUCTION CODE: UPDATED WELCOME MESSAGE & BRANDING
+// FULL COMPLETE PRODUCTION CODE: OFFERS (LEFT) & PRICING (RIGHT)
 // ============================================================
 
 require('dotenv').config();
@@ -494,7 +494,7 @@ function sendJoinChannelMessage(ctx, missingChannels) {
 }
 
 // ============================================================
-// 🏠 MAIN MENU (UPDATED WELCOME MESSAGE & BUTTON ALIGNMENT)
+// 🏠 MAIN MENU (OFFERS ON LEFT, PRICING ON RIGHT)
 // ============================================================
 
 function sendMainMenu(ctx) {
@@ -513,8 +513,8 @@ function sendMainMenu(ctx) {
         [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
         // Row 2 (2 Columns)
         [Markup.button.callback('💳 My Wallet', 'ACTION_WALLET'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-        // Row 3 (2 Columns)
-        [Markup.button.callback('🏷 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
+        // Row 3 (2 Columns: Offers on Left, Pricing on Right)
+        [Markup.button.callback('🎁 Offers', 'ACTION_OFFERS'), Markup.button.callback('🏷 Pricing', 'ACTION_PRICING')],
         // Row 4 (2 Columns)
         [Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help Center', 'ACTION_FAQ')],
         // Row 5 (Full Width URL Button)
