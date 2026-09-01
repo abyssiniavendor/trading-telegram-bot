@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 ATTS - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// FULL COMPLETE PRODUCTION CODE: OFFERS (LEFT) & PRICING (RIGHT)
+// FULL PRODUCTION BACKEND BOT
 // ============================================================
 
 require('dotenv').config();
@@ -9,6 +9,7 @@ const http = require('http');
 const https = require('https');
 const mongoose = require('mongoose');
 
+// Environment Configurations
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniavendor";
@@ -28,7 +29,7 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// 🛡️ Anti-Crash Error Handlers
+// 🛡️ Global Anti-Crash Error Handlers
 bot.catch((err) => {
   console.error(`⚠️ Telegram Bot Error:`, err.message);
 });
@@ -42,7 +43,7 @@ process.on('uncaughtException', (err) => {
 });
 
 // ============================================================
-// 📁 MONGOOSE DATABASE SCHEMAS
+// 📁 MONGOOSE DATABASE SCHEMAS & MODELS
 // ============================================================
 
 const UserSchema = new mongoose.Schema({
@@ -109,7 +110,7 @@ async function connectToMongo() {
     return;
   }
   try {
-    console.log("⏳ Connecting to MongoDB...");
+    console.log("⏳ Connecting to MongoDB Atlas...");
     await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 8000,
       connectTimeoutMS: 10000
@@ -373,32 +374,10 @@ const PAYMENT_INFO = {
 };
 
 // ============================================================
-// 📊 FULL HIERARCHICAL PRODUCTS CATALOG
+// 📊 PRODUCTS CATALOG
 // ============================================================
 
 const PRODUCTS_CATALOG = {
-  "tvprem_pure": { id: "tvprem_pure", title: "📊 TradingView Premium", tagline: "Top tier TradingView plan.", outOfStock: true },
-  "tvprem": { id: "tvprem", title: "📊 TradingView Premium + CME Data", tagline: "Top tier with CME Data.", outOfStock: true },
-  "tvess_pure": {
-    id: "tvess_pure",
-    title: "📈 TradingView Essential",
-    tagline: "Essential charting plan with 5 indicators and 2 charts per layout.",
-    plans: {
-      "1m": { name: "1 Month Access", price: 1100 },
-      "3m": { name: "3 Months Access", price: 2950, discountNote: "Save 350 ETB" },
-      "1y": { name: "1 Year Access", price: 9500, discountNote: "Best Value" }
-    }
-  },
-  "tvess": {
-    id: "tvess",
-    title: "📈 TradingView Essential + CME Data",
-    tagline: "Essential charting power combined with real-time CME futures data.",
-    plans: {
-      "1m": { name: "1 Month Access", price: 1350 },
-      "3m": { name: "3 Months Access", price: 3600, discountNote: "Save 450 ETB" },
-      "1y": { name: "1 Year Access", price: 12000, discountNote: "Great Savings" }
-    }
-  },
   "fxr": {
     id: "fxr",
     title: "🔄 Fxreplay Pro",
@@ -433,6 +412,28 @@ const PRODUCTS_CATALOG = {
           { code: "fxr_w_notion", name: "Weekly subscription + Notion pro journaling template tool", price: 300 }
         ]
       }
+    }
+  },
+  "tvprem_pure": { id: "tvprem_pure", title: "📊 TradingView Premium", tagline: "Top tier TradingView plan.", outOfStock: true },
+  "tvprem": { id: "tvprem", title: "📊 TradingView Premium + CME Data", tagline: "Top tier with CME Data.", outOfStock: true },
+  "tvess_pure": {
+    id: "tvess_pure",
+    title: "📈 TradingView Essential",
+    tagline: "Essential charting plan with 5 indicators and 2 charts per layout.",
+    plans: {
+      "1m": { name: "1 Month Access", price: 1100 },
+      "3m": { name: "3 Months Access", price: 2950, discountNote: "Save 350 ETB" },
+      "1y": { name: "1 Year Access", price: 9500, discountNote: "Best Value" }
+    }
+  },
+  "tvess": {
+    id: "tvess",
+    title: "📈 TradingView Essential + CME Data",
+    tagline: "Essential charting power combined with real-time CME futures data.",
+    plans: {
+      "1m": { name: "1 Month Access", price: 1350 },
+      "3m": { name: "3 Months Access", price: 3600, discountNote: "Save 450 ETB" },
+      "1y": { name: "1 Year Access", price: 12000, discountNote: "Great Savings" }
     }
   }
 };
@@ -525,7 +526,12 @@ function sendMainMenu(ctx) {
 }
 
 // ============================================================
-// 📊 TRADING TOOLS CATALOG
+// 📊 TRADING TOOLS MENU (YOUR EXACT REQUESTED LAYOUT)
+// 1. Fxreplay pro
+// 2. TV Premium | TV premium + CME
+// 3. TV Essential | TV Essential + CME
+// 4. Abyssinia Journal
+// 5. My wallet | Main menu
 // ============================================================
 
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
@@ -539,13 +545,29 @@ bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('📊 TradingView Premium', 'VIEW_tvprem_pure')],
-          [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
-          [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
-          [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
-          [Markup.button.callback('🔄 Fxreplay Pro', 'VIEW_fxr')],
-          [Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')],
-          [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+          // 1. Fxreplay pro (Full Width)
+          [
+            Markup.button.callback('🔄 Fxreplay Pro', 'VIEW_fxr')
+          ],
+          // 2. TV Premium | TV premium + CME (2 Columns)
+          [
+            Markup.button.callback('📊 TV Premium', 'VIEW_tvprem_pure'),
+            Markup.button.callback('📊 TV Premium + CME', 'VIEW_tvprem')
+          ],
+          // 3. TV Essential | TV Essential + CME (2 Columns)
+          [
+            Markup.button.callback('📈 TV Essential', 'VIEW_tvess_pure'),
+            Markup.button.callback('📈 TV Essential + CME', 'VIEW_tvess')
+          ],
+          // 4. Abyssinia Journal (Full Width)
+          [
+            Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')
+          ],
+          // 5. My wallet | Main menu (2 Columns)
+          [
+            Markup.button.callback('💳 My Wallet', 'ACTION_WALLET'),
+            Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
+          ]
         ])
       }
     );
@@ -563,8 +585,7 @@ bot.action('VIEW_abyssinia_journal', (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.url('📢 Follow Updates in Channel', 'https://t.me/abyssiniatradinget')],
-        [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP')],
-        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -587,8 +608,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [Markup.button.url('📢 Go To Official Channel', 'https://t.me/abyssiniatradinget')],
-            [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP')],
-            [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+            [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
           ])
         }
       );
@@ -605,7 +625,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
         [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
         [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
         [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
-        [Markup.button.callback('⬅️ Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⬅️ Back To Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ];
       return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
     }
@@ -621,7 +641,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
     });
 
     planButtons.push([
-      Markup.button.callback('⬅️ Back To Trading Tools', 'ACTION_SHOP'),
+      Markup.button.callback('⬅️ Back To Tools', 'ACTION_SHOP'),
       Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
     ]);
 
@@ -639,11 +659,11 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
     ]);
 
     optionButtons.push([
-      Markup.button.callback('⬅️ Back to Fxreplay Plans', 'VIEW_fxr'),
+      Markup.button.callback('⬅️ Back to Fxreplay', 'VIEW_fxr'),
       Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')
     ]);
 
-    ctx.reply(`🔄 <b>Fxreplay Pro — ${tier.name}</b>\n\nPlease select the package configuration you want:`, {
+    ctx.reply(`🔄 <b>Fxreplay Pro — ${tier.name}</b>\n\nPlease select your package:`, {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard(optionButtons)
     });
@@ -690,9 +710,8 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
           [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_fxr_${optCode}`)],
-          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-          [Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
-          [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr')]
+          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR'), Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
+          [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
         ])
       }
     );
@@ -729,9 +748,8 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
           [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_${prodKey}_${planCode}`)],
-          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-          [Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
-          [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
+          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR'), Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
+          [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
         ])
       }
     );
@@ -762,8 +780,7 @@ bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
           [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
-          [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR')],
-          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]
+          [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR'), Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]
         ])
       }
     );
@@ -798,8 +815,7 @@ bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-        [Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
+        [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS'), Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
         [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ])
     }
@@ -818,13 +834,13 @@ bot.action(/PAY_(TELEBIRR|BINANCE)/, (ctx) => {
               "• Phone Number: <code>" + PAYMENT_INFO.telebirr.number + "</code> (Tap to copy)\n" +
               "• Account Name: <code>" + PAYMENT_INFO.telebirr.name + "</code>\n" +
               "• Amount: <code>" + (session.finalPrice || 750) + " ETB</code>\n\n" +
-              "⚠️ <b>Important:</b> After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
+              "⚠️ <b>Important:</b> After completing payment, upload your transaction receipt right here in this chat.";
   } else {
     payText = "💎 <b>Binance Payment Details</b>\n\n" +
               "• Binance Pay ID: <code>" + PAYMENT_INFO.binance.id + "</code> (Tap to copy)\n" +
               "• Payee Name: <code>" + PAYMENT_INFO.binance.name + "</code>\n" +
               "• Amount: <code>" + ((session.finalPrice || 750) / 100).toFixed(1) + " USDT</code>\n\n" +
-              "⚠️ <b>Important:</b> After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
+              "⚠️ <b>Important:</b> After sending via Binance Pay, upload your transfer screenshot or TXID here.";
   }
 
   ctx.reply(payText, { parse_mode: 'HTML' });
@@ -851,7 +867,7 @@ bot.action('ACTION_WALLET', async (ctx) => {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
           [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
-          [Markup.button.callback('📜 Transaction History', 'WALLET_HISTORY'), Markup.button.callback('🛒 Buy with Wallet', 'ACTION_SHOP')],
+          [Markup.button.callback('📜 History', 'WALLET_HISTORY'), Markup.button.callback('🛒 Buy with Wallet', 'ACTION_SHOP')],
           [Markup.button.callback('🏠 Back to Main Menu', 'ACTION_MAIN_MENU')]
         ])
       }
@@ -871,7 +887,7 @@ bot.action('WALLET_DEPOSIT', async (ctx) => {
         [Markup.button.callback('👉 500 ETB', 'DEP_AMT_500'), Markup.button.callback('👉 1,000 ETB', 'DEP_AMT_1000')],
         [Markup.button.callback('👉 2,500 ETB', 'DEP_AMT_2500'), Markup.button.callback('👉 5,000 ETB', 'DEP_AMT_5000')],
         [Markup.button.callback('💵 Custom Amount', 'DEP_AMT_CUSTOM')],
-        [Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET')]
+        [Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ])
     }
   );
@@ -905,8 +921,7 @@ function showDepositMethodSelection(ctx, amount) {
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('📱 Telebirr', `DEP_METHOD_TELEBIRR_${amount}`)],
-        [Markup.button.callback('💎 Binance Pay', `DEP_METHOD_BINANCE_${amount}`)],
+        [Markup.button.callback('📱 Telebirr', `DEP_METHOD_TELEBIRR_${amount}`), Markup.button.callback('💎 Binance Pay', `DEP_METHOD_BINANCE_${amount}`)],
         [Markup.button.callback('⬅️ Back to Amounts', 'WALLET_DEPOSIT')]
       ])
     }
@@ -937,7 +952,7 @@ bot.action(/^DEP_METHOD_(TELEBIRR|BINANCE)_(\d+)$/, (ctx) => {
   }
 
   payText += `\n\n📤 <b>Submit Payment Proof:</b>\n` +
-             `After completing the payment, please upload your payment screenshot (receipt) right here in this chat.`;
+             `After completing payment, upload your payment screenshot (receipt) right here in this chat.`;
 
   return ctx.reply(payText, {
     parse_mode: 'HTML',
@@ -971,8 +986,7 @@ bot.action('WALLET_HISTORY', async (ctx) => {
   return ctx.reply(text, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
-      [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
-      [Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET')]
+      [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT'), Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET')]
     ])
   });
 });
@@ -1081,8 +1095,7 @@ bot.on('photo', async (ctx) => {
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-            [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+            [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
           ])
         }
       );
@@ -1133,8 +1146,7 @@ bot.action(/^DEP_APPROVE_(.+)$/, async (ctx) => {
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('📊 Buy Trading Tools', 'ACTION_SHOP')],
-          [Markup.button.callback('💳 View Wallet', 'ACTION_WALLET')]
+          [Markup.button.callback('📊 Buy Trading Tools', 'ACTION_SHOP'), Markup.button.callback('💳 View Wallet', 'ACTION_WALLET')]
         ])
       }
     );
@@ -1369,10 +1381,10 @@ bot.action('ACTION_MY_ORDERS', async (ctx) => {
 bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   ctx.reply(
     "🏷 <b>Official Pricing Overview:</b>\n\n" +
-    "1. 📊 <b>TradingView Premium</b> — 🚫 Out of Stock\n" +
-    "2. 📈 <b>TradingView Essential</b> — 1,100 ETB (1 Mo)\n" +
-    "3. 📈 <b>TradingView + CME Data</b> — 1,350 ETB (1 Mo)\n" +
-    "4. 🔄 <b>Fxreplay Pro</b> — Weekly from 250 ETB / Monthly from 750 ETB\n" +
+    "1. 🔄 <b>Fxreplay Pro</b> — Weekly from 250 ETB / Monthly from 750 ETB\n" +
+    "2. 📊 <b>TradingView Premium</b> — 🚫 Out of Stock\n" +
+    "3. 📈 <b>TradingView Essential</b> — 1,100 ETB (1 Mo)\n" +
+    "4. 📈 <b>TradingView + CME Data</b> — 1,350 ETB (1 Mo)\n" +
     "5. 📓 <b>Abyssinia Journal</b> — ✨ Coming Soon!",
     {
       parse_mode: 'HTML',
@@ -1387,8 +1399,8 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
 bot.action('ACTION_OFFERS', (ctx) => {
   ctx.reply(
     "🎁 <b>SPECIAL SEASON OFFERS</b>\n\n" +
-    "🔥 <b>TradingView Essential + CME Data</b>\nGet real-time CME market data for only 3,600 ETB (3 Months).\n\n" +
     "🔥 <b>FX Replay Pro Multi-Timeframe Packs</b>\nFull backtesting access starting at just 250 ETB.\n\n" +
+    "🔥 <b>TradingView Essential + CME Data</b>\nGet real-time CME market data for only 3,600 ETB (3 Months).\n\n" +
     "🔥 <b>Abyssinia Journal Launch Special</b>\nComing soon with early bird pricing!",
     {
       parse_mode: 'HTML',
