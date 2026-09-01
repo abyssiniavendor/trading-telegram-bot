@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// PRODUCTION SCRIPT: COMPLETE STORE + WALLET SYSTEM + BUTTON ALIGNMENT
+// FULL COMPLETE PRODUCTION CODE: CATALOG + WALLET + BUTTONS
 // ============================================================
 
 require('dotenv').config();
@@ -14,7 +14,7 @@ const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniavendor";
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// 📢 Required Channels that users must join
+// 📢 Required Community Channels
 const REQUIRED_CHANNELS = [
   { username: "@abyssiniatradinget", name: "Abyssinia Trading Official", url: "https://t.me/abyssiniatradinget" },
   { username: "@abyssiniachat", name: "Abyssinia Trading Chat Community", url: "https://t.me/abyssiniachat" },
@@ -29,11 +29,11 @@ if (!BOT_TOKEN) {
 const bot = new Telegraf(BOT_TOKEN);
 
 // 🛡️ Anti-Crash Error Handlers
-bot.catch((err, ctx) => {
+bot.catch((err) => {
   console.error(`⚠️ Telegram Bot Error:`, err.message);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   console.error('⚠️ Unhandled Rejection:', reason);
 });
 
@@ -58,13 +58,10 @@ const OrderSchema = new mongoose.Schema({
   username: { type: String, default: 'Trader' },
   tool: { type: String, required: true },
   plan: { type: String, default: 'Standard' },
-  status: { type: String, default: 'Pending' }, // 'Pending' | 'Active' | 'Expired' | 'Rejected'
+  status: { type: String, default: 'Pending' },
   price: { type: String, default: 'Paid' },
-  paymentMethod: { type: String, default: 'Direct' }, // 'Wallet' | 'Telebirr' | 'Binance'
+  paymentMethod: { type: String, default: 'Direct' },
   credentials: { type: String, default: '' },
-  currentWeek: { type: Number, default: 1 },
-  totalWeeks: { type: Number, default: 1 },
-  weeklyHistory: { type: Array, default: [] },
   expiresAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
@@ -75,16 +72,15 @@ const DepositSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   method: { type: String, default: 'Telebirr' },
   refCode: { type: String, required: true, unique: true },
-  status: { type: String, default: 'PENDING' }, // 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+  status: { type: String, default: 'PENDING' },
   receiptPhotoId: { type: String, default: '' },
-  adminReason: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
   processedAt: { type: Date, default: null }
 });
 
 const WalletTransactionSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
-  type: { type: String, required: true }, // 'DEPOSIT' | 'PURCHASE' | 'ADMIN_CREDIT' | 'ADMIN_DEBIT'
+  type: { type: String, required: true },
   amount: { type: Number, required: true },
   balanceAfter: { type: Number, required: true },
   description: { type: String, default: '' },
@@ -97,41 +93,36 @@ const Deposit = mongoose.models.Deposit || mongoose.model('Deposit', DepositSche
 const WalletTransaction = mongoose.models.WalletTransaction || mongoose.model('WalletTransaction', WalletTransactionSchema);
 
 let isMongoConnected = false;
-let mongoErrorDetails = "MONGODB_URI is not configured yet";
 
-// Temporary fallback in-memory cache if MongoDB is offline
+// Fallback in-memory cache
 const fallbackDb = {
   users: new Map(),
   userOrders: {},
   deposits: [],
   transactions: {},
-  referrerOf: {},
   referrals: {}
 };
 
 async function connectToMongo() {
   if (!MONGODB_URI) {
-    console.log("❌ WARNING: MONGODB_URI is not set. Using temporary memory store.");
+    console.log("ℹ️ MONGODB_URI not provided. Operating with in-memory fallback.");
     return;
   }
-
   try {
-    console.log("⏳ Connecting to MongoDB Cloud Database...");
+    console.log("⏳ Connecting to MongoDB...");
     await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 8000,
       connectTimeoutMS: 10000
     });
     isMongoConnected = true;
-    mongoErrorDetails = "Connected successfully!";
-    console.log("✅ 🟢 SUCCESS: MongoDB Cloud Database is CONNECTED & ACTIVE!");
+    console.log("✅ 🟢 MongoDB Connected successfully!");
   } catch (err) {
     isMongoConnected = false;
-    mongoErrorDetails = err.message;
-    console.error("❌ 🔴 MongoDB Connection Error:", err.message);
+    console.error("❌ MongoDB Connection Error:", err.message);
   }
 }
 
-// Auto-expire overdue orders periodically
+// Check & expire overdue orders
 async function checkExpiredOrders() {
   const now = new Date();
   if (isMongoConnected) {
@@ -141,14 +132,6 @@ async function checkExpiredOrders() {
         { status: 'Expired' }
       );
     } catch (e) {}
-  } else {
-    for (const uId in fallbackDb.userOrders) {
-      fallbackDb.userOrders[uId].forEach(o => {
-        if (o.status === 'Active' && o.expiresAt && o.expiresAt <= now) {
-          o.status = 'Expired';
-        }
-      });
-    }
   }
 }
 setInterval(checkExpiredOrders, 60 * 60 * 1000);
@@ -171,11 +154,6 @@ async function recordUser(userId, username, referrerId = null) {
   }
   if (!fallbackDb.users.has(userId)) {
     fallbackDb.users.set(userId, { userId, username: username || '', balance: 0, referrerId });
-  }
-  if (referrerId && !fallbackDb.referrerOf[userId]) {
-    fallbackDb.referrerOf[userId] = referrerId;
-    if (!fallbackDb.referrals[referrerId]) fallbackDb.referrals[referrerId] = [];
-    fallbackDb.referrals[referrerId].push(userId);
   }
 }
 
@@ -243,7 +221,7 @@ async function debitWallet(userId, amount, description = 'Product Purchase', typ
       await WalletTransaction.create({
         userId,
         type,
-        amount: -amount,
+        amount,
         balanceAfter: user.balance,
         description
       });
@@ -257,7 +235,7 @@ async function debitWallet(userId, amount, description = 'Product Purchase', typ
   if (!fallbackDb.transactions[userId]) fallbackDb.transactions[userId] = [];
   fallbackDb.transactions[userId].unshift({
     type,
-    amount: -amount,
+    amount,
     balanceAfter: memUser.balance,
     description,
     createdAt: new Date()
@@ -319,10 +297,6 @@ async function getUserOrders(userId) {
 
 async function addPendingOrder(userId, username, tool, plan, price, paymentMethod = 'Direct') {
   userId = String(userId);
-  const isMonthlyFxr = tool.toLowerCase().includes('fxreplay') && (plan.toLowerCase().includes('month') || tool.toLowerCase().includes('month'));
-  const isTwoWeekFxr = tool.toLowerCase().includes('fxreplay') && (plan.toLowerCase().includes('two') || tool.toLowerCase().includes('2'));
-  const totalWeeks = isMonthlyFxr ? 5 : (isTwoWeekFxr ? 2 : 1);
-
   if (isMongoConnected) {
     try {
       return await Order.create({
@@ -333,9 +307,7 @@ async function addPendingOrder(userId, username, tool, plan, price, paymentMetho
         status: 'Pending',
         price: `${price} ETB`,
         paymentMethod,
-        credentials: '',
-        totalWeeks: totalWeeks,
-        currentWeek: 1
+        credentials: ''
       });
     } catch (e) {}
   }
@@ -349,10 +321,7 @@ async function addPendingOrder(userId, username, tool, plan, price, paymentMetho
     status: 'Pending',
     price: `${price} ETB`,
     paymentMethod,
-    credentials: '',
-    totalWeeks: totalWeeks,
-    currentWeek: 1,
-    weeklyHistory: []
+    credentials: ''
   };
   fallbackDb.userOrders[userId].unshift(tempOrd);
   return tempOrd;
@@ -394,7 +363,7 @@ async function activateOrder(userId, customMessage, durationDays = null) {
   }
 }
 
-// In-flight user session tracking
+// User active session cache
 const userSessions = {};
 
 // Payment Accounts
@@ -403,16 +372,81 @@ const PAYMENT_INFO = {
   binance: { id: "874067761", name: "ABYSSINIAVENDOR" }
 };
 
+// ============================================================
+// 📊 FULL HIERARCHICAL PRODUCTS CATALOG
+// ============================================================
+
+const PRODUCTS_CATALOG = {
+  "tvprem_pure": { id: "tvprem_pure", title: "📊 TradingView Premium", tagline: "Top tier TradingView plan.", outOfStock: true },
+  "tvprem": { id: "tvprem", title: "📊 TradingView Premium + CME Data", tagline: "Top tier with CME Data.", outOfStock: true },
+  "tvess_pure": {
+    id: "tvess_pure",
+    title: "📈 TradingView Essential",
+    tagline: "Essential charting plan with 5 indicators and 2 charts per layout.",
+    plans: {
+      "1m": { name: "1 Month Access", price: 1100 },
+      "3m": { name: "3 Months Access", price: 2950, discountNote: "Save 350 ETB" },
+      "1y": { name: "1 Year Access", price: 9500, discountNote: "Best Value" }
+    }
+  },
+  "tvess": {
+    id: "tvess",
+    title: "📈 TradingView Essential + CME Data",
+    tagline: "Essential charting power combined with real-time CME futures data.",
+    plans: {
+      "1m": { name: "1 Month Access", price: 1350 },
+      "3m": { name: "3 Months Access", price: 3600, discountNote: "Save 450 ETB" },
+      "1y": { name: "1 Year Access", price: 12000, discountNote: "Great Savings" }
+    }
+  },
+  "fxr": {
+    id: "fxr",
+    title: "🔄 Fxreplay Pro",
+    tagline: "The premier backtesting platform for Forex, Crypto & Futures traders.",
+    features: [
+      "True multi-timeframe backtesting engine",
+      "Realistic simulated broker fills & spreads",
+      "Automated Trade Analytics & Win-rate tracking",
+      "Unlimited charts & historical tick replay"
+    ],
+    tiers: {
+      "monthly": {
+        name: "Monthly subscription plan",
+        options: [
+          { code: "fxr_m_mw", name: "Monthly + weekly subscription", price: 2000 },
+          { code: "fxr_m_mw_aj", name: "Monthly + weekly + Abyssinia Journal subscription", price: 2500 },
+          { code: "fxr_m_single", name: "Monthly subscription", price: 750 },
+          { code: "fxr_m_notion", name: "Monthly subscription + Notion pro Journaling template", price: 850 }
+        ]
+      },
+      "twoweeks": {
+        name: "Two weeks subscription plan",
+        options: [
+          { code: "fxr_2w_w", name: "Two weeks + weekly subscription", price: 550 },
+          { code: "fxr_2w_w_notion", name: "Two weeks + weekly subscription + Notion pro journaling template", price: 600 }
+        ]
+      },
+      "weekly": {
+        name: "Weekly subscription plan",
+        options: [
+          { code: "fxr_w_single", name: "Weekly subscription", price: 250 },
+          { code: "fxr_w_notion", name: "Weekly subscription + Notion pro journaling template tool", price: 300 }
+        ]
+      }
+    }
+  }
+};
+
 // 🌐 Health Check HTTP Server for Render
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('A T T S Telegram Bot Server is LIVE 24/7!');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 Health check server listening on port ${PORT}`);
+  console.log(`🌐 Health check server active on port ${PORT}`);
 });
 
-// Safe Keep-Alive
+// Keep-Alive for Render free instances
 if (process.env.RENDER_EXTERNAL_URL) {
   const pingUrl = process.env.RENDER_EXTERNAL_URL;
   const client = pingUrl.startsWith('https') ? https : http;
@@ -429,7 +463,7 @@ bot.use((ctx, next) => {
   return next();
 });
 
-// Force Join Verification
+// Community Channel Check
 async function checkAllChannelMemberships(ctx, userId) {
   if (String(userId) === String(ADMIN_CHAT_ID)) return { allJoined: true, missing: [] };
   const missing = [];
@@ -460,7 +494,7 @@ function sendJoinChannelMessage(ctx, missingChannels) {
 }
 
 // ============================================================
-// 🏠 MAIN MENU (REQUESTED BUTTON ALIGNMENT)
+// 🏠 MAIN MENU (REQUESTED BUTTON ALIGNMENT + 💬 Live Support)
 // ============================================================
 
 async function sendMainMenu(ctx) {
@@ -479,15 +513,321 @@ async function sendMainMenu(ctx) {
         [Markup.button.callback('🏷 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
         // Row 4 (2 Columns)
         [Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help Center', 'ACTION_FAQ')],
-        // Row 5 (Full Width)
-        [Markup.button.url('🎧 Support', 'https://t.me/' + SUPPORT_USERNAME)]
+        // Row 5 (Full Width URL Button)
+        [Markup.button.url('💬 Live Support', 'https://t.me/' + SUPPORT_USERNAME)]
       ])
     }
   );
 }
 
 // ============================================================
-// 💰 CUSTOMER WALLET ACTIONS
+// 📊 TRADING TOOLS CATALOG (RESTORED TO ORIGINAL HIERARCHY)
+// ============================================================
+
+bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
+  try {
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
+    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
+
+    return ctx.reply(
+      "📊 <b>A T T S Trading Tools</b>\n\n" +
+      "Select a trading tool below to view specifications, available plans, and instant pricing:",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('📊 TradingView Premium', 'VIEW_tvprem_pure')],
+          [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
+          [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
+          [Markup.button.callback('📈 TradingView Essential + CME Data', 'VIEW_tvess')],
+          [Markup.button.callback('🔄 Fxreplay Pro', 'VIEW_fxr')],
+          [Markup.button.callback('📓 Abyssinia Journal', 'VIEW_abyssinia_journal')],
+          [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
+        ])
+      }
+    );
+  } catch (err) {}
+});
+
+// Abyssinia Journal view
+bot.action('VIEW_abyssinia_journal', (ctx) => {
+  ctx.reply(
+    "📓 <b>Abyssinia Journal</b>\n\n" +
+    "✨ <i>Coming soon!</i>\n\n" +
+    "Our automated trade journaling, risk management, and equity tracker is currently in final testing.\n\n" +
+    "📢 Stay tuned on our official channel @abyssiniatradinget for the launch date!",
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.url('📢 Follow Updates in Channel', 'https://t.me/abyssiniatradinget')],
+        [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP')],
+        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
+  );
+});
+
+// Product detail view
+bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
+  try {
+    const prodKey = ctx.match[1];
+    const product = PRODUCTS_CATALOG[prodKey];
+    if (!product) return ctx.reply("Product not found.", Markup.inlineKeyboard([[Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]]));
+
+    if (product.outOfStock) {
+      return ctx.reply(
+        `<b>${product.title}</b>\n\n` +
+        "🚫 <b>STATUS: OUT OF STOCK</b>\n\n" +
+        "We are currently restocking this subscription package.\n\n" +
+        "📢 Keep updated on our official channel @abyssiniatradinget for instant restock announcements!",
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url('📢 Go To Official Channel', 'https://t.me/abyssiniatradinget')],
+            [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP')],
+            [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+          ])
+        }
+      );
+    }
+
+    if (prodKey === 'fxr') {
+      let descText = `<b>${product.title}</b>\n` +
+                     `${product.tagline}\n\n` +
+                     `✨ <b>Key Features:</b>\n` +
+                     product.features.map(f => `• ${f}`).join('\n') +
+                     `\n\n👇 <b>Choose your subscription plan:</b>`;
+
+      const tierButtons = [
+        [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
+        [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
+        [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
+        [Markup.button.callback('⬅️ Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      ];
+      return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
+    }
+
+    let descText = `<b>${product.title}</b>\n` +
+                   `${product.tagline}\n\n` +
+                   `💳 <b>Available Subscription Plans:</b>\n`;
+
+    const planButtons = Object.keys(product.plans).map(planCode => {
+      const plan = product.plans[planCode];
+      const note = plan.discountNote ? " (" + plan.discountNote + ")" : "";
+      return [Markup.button.callback(`👉 ${plan.name} — ${plan.price} ETB${note}`, `PLAN:${prodKey}:${planCode}`)];
+    });
+
+    planButtons.push([
+      Markup.button.callback('⬅️ Back To Trading Tools', 'ACTION_SHOP'),
+      Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
+    ]);
+
+    ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(planButtons) });
+  } catch (err) {}
+});
+
+bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
+  try {
+    const tierKey = ctx.match[1];
+    const tier = PRODUCTS_CATALOG['fxr'].tiers[tierKey];
+
+    const optionButtons = tier.options.map(opt => [
+      Markup.button.callback(`👉 ${opt.name} - ${opt.price} ETB`, `FXR_OPT_${opt.code}`)
+    ]);
+
+    optionButtons.push([
+      Markup.button.callback('⬅️ Back to Fxreplay Plans', 'VIEW_fxr'),
+      Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')
+    ]);
+
+    ctx.reply(`🔄 <b>Fxreplay Pro — ${tier.name}</b>\n\nPlease select the package configuration you want:`, {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard(optionButtons)
+    });
+  } catch (err) {}
+});
+
+bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
+  try {
+    const optCode = ctx.match[1];
+    const product = PRODUCTS_CATALOG['fxr'];
+    let selectedOpt = null;
+    let selectedTierName = "";
+
+    for (const tKey in product.tiers) {
+      const match = product.tiers[tKey].options.find(o => o.code === optCode);
+      if (match) {
+        selectedOpt = match;
+        selectedTierName = product.tiers[tKey].name;
+        break;
+      }
+    }
+
+    if (!selectedOpt) return ctx.reply("Option error.", Markup.inlineKeyboard([[Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]]));
+
+    const balance = await getUserBalance(ctx.from.id);
+    userSessions[ctx.from.id] = {
+      type: 'ORDER',
+      productId: 'fxr',
+      planKey: optCode,
+      tool: `Fxreplay Pro - ${selectedOpt.name}`,
+      planTitle: selectedTierName,
+      finalPrice: selectedOpt.price
+    };
+
+    ctx.reply(
+      "🧾 <b>Order Summary:</b>\n\n" +
+      "📦 <b>Product:</b> Fxreplay Pro\n" +
+      `📁 <b>Plan:</b> ${selectedTierName}\n` +
+      `✨ <b>Package:</b> ${selectedOpt.name}\n` +
+      `💰 <b>Total Payable:</b> ${selectedOpt.price} ETB\n` +
+      `💳 <b>Your Wallet Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n` +
+      "Please choose your preferred payment method below:",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_fxr_${optCode}`)],
+          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
+          [Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
+          [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr')]
+        ])
+      }
+    );
+  } catch (err) {}
+});
+
+bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ctx) => {
+  try {
+    const prodKey = ctx.match[1];
+    const planCode = ctx.match[2];
+    const product = PRODUCTS_CATALOG[prodKey];
+    if (!product || !product.plans || !product.plans[planCode]) return ctx.reply("Plan error.");
+
+    const plan = product.plans[planCode];
+    const balance = await getUserBalance(ctx.from.id);
+
+    userSessions[ctx.from.id] = {
+      type: 'ORDER',
+      productId: prodKey,
+      planKey: planCode,
+      tool: `${product.title} (${plan.name})`,
+      planTitle: plan.name,
+      finalPrice: plan.price
+    };
+
+    ctx.reply(
+      "🧾 <b>Order Summary:</b>\n\n" +
+      "📦 <b>Product:</b> " + product.title + "\n" +
+      "⏱️ <b>Plan:</b> " + plan.name + "\n" +
+      "💰 <b>Total Payable:</b> " + plan.price + " ETB\n" +
+      `💳 <b>Your Wallet Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n` +
+      "Please choose your preferred payment method below:",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_${prodKey}_${planCode}`)],
+          [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
+          [Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
+          [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
+        ])
+      }
+    );
+  } catch (err) {}
+});
+
+// Pay with Wallet Handler
+bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
+  const session = userSessions[ctx.from.id];
+  const price = session ? session.finalPrice : 750;
+  const toolName = session ? session.tool : "Trading Tool Access";
+  const planTitle = session ? session.planTitle : "Standard";
+
+  const userId = ctx.from.id;
+  const username = ctx.from.username || 'Trader';
+
+  const newBalance = await debitWallet(userId, price, `Purchase: ${toolName}`);
+
+  if (newBalance === null) {
+    const currentBalance = await getUserBalance(userId);
+    return ctx.reply(
+      "⚠️ <b>INSUFFICIENT WALLET BALANCE</b>\n\n" +
+      `<b>Product Price:</b> ${price.toLocaleString()} ETB\n` +
+      `<b>Your Balance:</b> ${currentBalance.toLocaleString()} ETB\n` +
+      `<b>Shortage:</b> ${(price - currentBalance).toLocaleString()} ETB\n\n` +
+      "Please add funds to your wallet or pay via Telebirr:",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
+          [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR')],
+          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]
+        ])
+      }
+    );
+  }
+
+  await addPendingOrder(userId, username, toolName, planTitle, price, 'Wallet');
+
+  if (ADMIN_CHAT_ID) {
+    try {
+      await bot.telegram.sendMessage(
+        ADMIN_CHAT_ID,
+        `🚨 <b>NEW ORDER PAID VIA WALLET!</b>\n\n` +
+        `👤 Customer: @${username}\n` +
+        `🆔 User ID: <code>${userId}</code>\n` +
+        `📦 Product: <b>${toolName}</b>\n` +
+        `💰 Amount: <b>${price} ETB (Wallet Paid)</b>\n` +
+        `💳 Remaining Wallet: <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
+        `💡 Deliver Credentials:\n` +
+        `<code>/send ${userId} Email: ... | Pass: ...</code>`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (e) {}
+  }
+
+  return ctx.reply(
+    `🎉 <b>PURCHASE COMPLETED WITH WALLET!</b>\n\n` +
+    `📦 <b>Product:</b> ${toolName}\n` +
+    `💰 <b>Deducted:</b> -${price.toLocaleString()} ETB\n` +
+    `💳 <b>Remaining Balance:</b> <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
+    `✅ Your order is confirmed. Login credentials will be delivered within 5–15 minutes!\n\n` +
+    `Track your order in <b>📦 My Orders</b>.`,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
+        [Markup.button.callback('💳 My Wallet', 'ACTION_WALLET')],
+        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
+  );
+});
+
+// Direct Payment Selected
+bot.action(/PAY_(TELEBIRR|BINANCE)/, (ctx) => {
+  const method = ctx.match[1];
+  const session = userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
+  session.method = method;
+
+  let payText = '';
+  if (method === 'TELEBIRR') {
+    payText = "📱 <b>Telebirr Payment Details</b>\n\n" +
+              "• Phone Number: <code>" + PAYMENT_INFO.telebirr.number + "</code> (Tap to copy)\n" +
+              "• Account Name: <code>" + PAYMENT_INFO.telebirr.name + "</code>\n" +
+              "• Amount: <code>" + (session.finalPrice || 750) + " ETB</code>\n\n" +
+              "⚠️ <b>Important:</b> After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
+  } else {
+    payText = "💎 <b>Binance Payment Details</b>\n\n" +
+              "• Binance Pay ID: <code>" + PAYMENT_INFO.binance.id + "</code> (Tap to copy)\n" +
+              "• Payee Name: <code>" + PAYMENT_INFO.binance.name + "</code>\n" +
+              "• Amount: <code>" + ((session.finalPrice || 750) / 100).toFixed(1) + " USDT</code>\n\n" +
+              "⚠️ <b>Important:</b> After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
+  }
+
+  ctx.reply(payText, { parse_mode: 'HTML' });
+});
+
+// ============================================================
+// 💰 CUSTOMER WALLET SYSTEM
 // ============================================================
 
 bot.action('ACTION_WALLET', async (ctx) => {
@@ -533,7 +873,6 @@ bot.action('WALLET_DEPOSIT', async (ctx) => {
   );
 });
 
-// Custom Deposit Input
 bot.action('DEP_AMT_CUSTOM', (ctx) => {
   userSessions[ctx.from.id] = { awaitingCustomDeposit: true };
   return ctx.reply(
@@ -549,7 +888,6 @@ bot.action('DEP_AMT_CUSTOM', (ctx) => {
   );
 });
 
-// Preset Amount Clicked
 bot.action(/^DEP_AMT_(\d+)$/, (ctx) => {
   const amount = parseInt(ctx.match[1], 10);
   return showDepositMethodSelection(ctx, amount);
@@ -571,7 +909,6 @@ function showDepositMethodSelection(ctx, amount) {
   );
 }
 
-// Payment method selected -> Provide transfer instructions
 bot.action(/^DEP_METHOD_(TELEBIRR|BINANCE)_(\d+)$/, (ctx) => {
   const method = ctx.match[1];
   const amount = parseInt(ctx.match[2], 10);
@@ -606,7 +943,6 @@ bot.action(/^DEP_METHOD_(TELEBIRR|BINANCE)_(\d+)$/, (ctx) => {
   });
 });
 
-// Transaction History
 bot.action('WALLET_HISTORY', async (ctx) => {
   const userId = ctx.from.id;
   const balance = await getUserBalance(userId);
@@ -635,157 +971,6 @@ bot.action('WALLET_HISTORY', async (ctx) => {
       [Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET')]
     ])
   });
-});
-
-// ============================================================
-// 📊 TRADING TOOLS CATALOG
-// ============================================================
-
-const TOOLS_CATALOG = {
-  "fxr_month": { name: "🔄 Fxreplay Pro (Monthly)", price: 750 },
-  "fxr_2week": { name: "🔄 Fxreplay Pro (Two Weeks)", price: 450 },
-  "fxr_week": { name: "🔄 Fxreplay Pro (Weekly)", price: 250 },
-  "tv_ess": { name: "📈 TradingView Essential (1 Mo)", price: 1100 },
-  "tv_cme": { name: "📈 TradingView + CME Data (1 Mo)", price: 1350 }
-};
-
-bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
-  return ctx.reply(
-    "📊 <b>A T T S Trading Tools Catalog</b>\n\n" +
-    "Select a tool below to order or renew instantly with your wallet balance:",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Fxreplay Pro (Monthly) - 750 ETB', 'TOOL_fxr_month')],
-        [Markup.button.callback('🔄 Fxreplay Pro (2 Weeks) - 450 ETB', 'TOOL_fxr_2week')],
-        [Markup.button.callback('🔄 Fxreplay Pro (Weekly) - 250 ETB', 'TOOL_fxr_week')],
-        [Markup.button.callback('📈 TradingView Essential - 1,100 ETB', 'TOOL_tv_ess')],
-        [Markup.button.callback('📈 TradingView + CME Data - 1,350 ETB', 'TOOL_tv_cme')],
-        [Markup.button.callback('💳 My Wallet', 'ACTION_WALLET'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
-      ])
-    }
-  );
-});
-
-bot.action(/^TOOL_(.+)$/, async (ctx) => {
-  const toolKey = ctx.match[1];
-  const tool = TOOLS_CATALOG[toolKey] || TOOLS_CATALOG["fxr_month"];
-  const balance = await getUserBalance(ctx.from.id);
-
-  userSessions[ctx.from.id] = {
-    type: 'ORDER',
-    tool: tool.name,
-    finalPrice: tool.price,
-    toolKey: toolKey
-  };
-
-  return ctx.reply(
-    "🧾 <b>Order Summary:</b>\n\n" +
-    `📦 <b>Product:</b> ${tool.name}\n` +
-    `💰 <b>Price:</b> <b>${tool.price.toLocaleString()} ETB</b>\n` +
-    `💳 <b>Your Wallet Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n` +
-    "Please choose your payment method below:",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_${toolKey}`)],
-        [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR')],
-        [Markup.button.callback('💎 Pay via Binance', 'PAY_BINANCE')],
-        [Markup.button.callback('⬅️ Back to Tools', 'ACTION_SHOP')]
-      ])
-    }
-  );
-});
-
-// Pay with Wallet execution
-bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
-  const toolKey = ctx.match[1];
-  const tool = TOOLS_CATALOG[toolKey] || TOOLS_CATALOG["fxr_month"];
-  const userId = ctx.from.id;
-  const username = ctx.from.username || 'Trader';
-
-  const newBalance = await debitWallet(userId, tool.price, `Purchase: ${tool.name}`);
-
-  if (newBalance === null) {
-    const currentBalance = await getUserBalance(userId);
-    return ctx.reply(
-      "⚠️ <b>INSUFFICIENT WALLET BALANCE</b>\n\n" +
-      `<b>Product Price:</b> ${tool.price.toLocaleString()} ETB\n` +
-      `<b>Your Balance:</b> ${currentBalance.toLocaleString()} ETB\n` +
-      `<b>Shortage:</b> ${(tool.price - currentBalance).toLocaleString()} ETB\n\n` +
-      "Please add funds to your wallet or pay via Telebirr:",
-      {
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
-          [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR')],
-          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]
-        ])
-      }
-    );
-  }
-
-  // Record order
-  await addPendingOrder(userId, username, tool.name, 'Standard', tool.price, 'Wallet');
-
-  // Notify Admin
-  if (ADMIN_CHAT_ID) {
-    try {
-      await bot.telegram.sendMessage(
-        ADMIN_CHAT_ID,
-        `🚨 <b>NEW ORDER PAID VIA WALLET!</b>\n\n` +
-        `👤 Customer: @${username}\n` +
-        `🆔 User ID: <code>${userId}</code>\n` +
-        `📦 Product: <b>${tool.name}</b>\n` +
-        `💰 Amount: <b>${tool.price} ETB (Wallet Paid)</b>\n` +
-        `💳 Remaining Wallet: <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
-        `💡 Deliver Credentials:\n` +
-        `<code>/send ${userId} Email: ... | Pass: ...</code>`,
-        { parse_mode: 'HTML' }
-      );
-    } catch (e) {}
-  }
-
-  return ctx.reply(
-    `🎉 <b>PURCHASE COMPLETED WITH WALLET!</b>\n\n` +
-    `📦 <b>Product:</b> ${tool.name}\n` +
-    `💰 <b>Deducted:</b> -${tool.price.toLocaleString()} ETB\n` +
-    `💳 <b>Remaining Balance:</b> <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
-    `✅ Your order is confirmed. Credentials will be delivered within 5–15 minutes!\n\n` +
-    `Track your order in <b>📦 My Orders</b>.`,
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-        [Markup.button.callback('💳 View Wallet', 'ACTION_WALLET')],
-        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
-      ])
-    }
-  );
-});
-
-// Direct payment chosen
-bot.action(/PAY_(TELEBIRR|BINANCE)/, (ctx) => {
-  const method = ctx.match[1];
-  const session = userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
-  session.method = method;
-
-  let payText = '';
-  if (method === 'TELEBIRR') {
-    payText = `📱 <b>Telebirr Payment Details</b>\n\n` +
-              `• Phone Number: <code>${PAYMENT_INFO.telebirr.number}</code>\n` +
-              `• Account Name: <code>${PAYMENT_INFO.telebirr.name}</code>\n` +
-              `• Amount: <code>${session.finalPrice || 750} ETB</code>\n\n` +
-              `⚠️ After completing payment, upload your transfer screenshot right here.`;
-  } else {
-    payText = `💎 <b>Binance Payment Details</b>\n\n` +
-              `• Binance Pay ID: <code>${PAYMENT_INFO.binance.id}</code>\n` +
-              `• Payee Name: <code>${PAYMENT_INFO.binance.name}</code>\n` +
-              `• Amount: <code>${((session.finalPrice || 750) / 100).toFixed(1)} USDT</code>\n\n` +
-              `⚠️ After transferring via Binance Pay, upload your confirmation screenshot here.`;
-  }
-
-  ctx.reply(payText, { parse_mode: 'HTML' });
 });
 
 // ============================================================
@@ -867,8 +1052,9 @@ bot.on('photo', async (ctx) => {
     } else {
       const toolName = session.tool || 'Trading Tool Access';
       const price = session.finalPrice || 750;
+      const planTitle = session.planTitle || 'Standard';
 
-      await addPendingOrder(user.id, user.username, toolName, 'Standard', price, session.method || 'Direct');
+      await addPendingOrder(user.id, user.username, toolName, planTitle, price, session.method || 'Direct');
 
       if (ADMIN_CHAT_ID) {
         try {
