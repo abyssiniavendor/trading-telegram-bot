@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// PRODUCTION SCRIPT WITH CHANNEL POST FILTER & IN-APP CHECKOUT
+// PRODUCTION SCRIPT: "TRADING TOOLS" BRANDED CLEAN UI
 // ============================================================
 
 require('dotenv').config();
@@ -13,7 +13,6 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || "abyssiniavendor";
 const MONGODB_URI = process.env.MONGODB_URI;
-const WEBAPP_URL = process.env.RENDER_EXTERNAL_URL || "https://trading-telegram-bot-e29v.onrender.com";
 
 // 📢 Required Channels that users must join
 const REQUIRED_CHANNELS = [
@@ -408,209 +407,15 @@ const PRODUCTS_CATALOG = {
   }
 };
 
-// 📱 TELEGRAM MINI APP (WEB APP) WITH IN-APP CHECKOUT
-const MINI_APP_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>A T T S Store</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root {
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --success: #16a34a;
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --accent: #38bdf8;
-      --border: #334155;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); padding: 16px; -webkit-tap-highlight-color: transparent; }
-    .header { text-align: center; margin-bottom: 20px; }
-    .logo { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: inline-flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; margin-bottom: 8px; }
-    .title { font-size: 20px; font-weight: 700; color: #fff; }
-    .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
-    
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
-    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-    .card-title { font-size: 16px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px; }
-    .badge { padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-    .badge-blue { background: rgba(37,99,235,0.2); color: var(--accent); border: 1px solid rgba(56,189,248,0.3); }
-    .badge-green { background: rgba(22,163,74,0.2); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
-    .badge-red { background: rgba(220,38,38,0.2); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
-    .desc { font-size: 13px; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px; }
-    
-    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-    .btn { width: 100%; padding: 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; text-decoration: none; }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:active { background: var(--primary-hover); transform: scale(0.98); }
-    .btn-success { background: var(--success); color: #fff; }
-    .btn-success:active { background: #15803d; transform: scale(0.98); }
-    .btn-secondary { background: #334155; color: #fff; }
-    .btn-disabled { background: #1e293b; color: #64748b; border: 1px solid #334155; cursor: not-allowed; }
-    
-    /* Checkout Modal / Screen */
-    #checkoutView { display: none; }
-    .checkout-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
-    .pay-card { background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 12px 0; }
-    .copy-chip { background: #1e293b; border: 1px solid #3b82f6; color: #38bdf8; padding: 6px 12px; border-radius: 8px; display: inline-block; font-family: monospace; font-size: 14px; font-weight: bold; margin: 6px 0; cursor: pointer; }
-    
-    .footer { text-align: center; margin-top: 24px; padding-bottom: 20px; font-size: 12px; color: var(--text-muted); }
-    .footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
-  </style>
-</head>
-<body>
-  <!-- STOREFRONT VIEW -->
-  <div id="storeView">
-    <div class="header">
-      <div class="logo">🦅</div>
-      <h1 class="title">A T T S Store</h1>
-      <p class="subtitle">Official Abyssinia Trading Tools & Market Data Store</p>
-    </div>
-
-    <!-- Fxreplay Card -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">🔄 Fxreplay Pro</div>
-        <span class="badge badge-green">In Stock</span>
-      </div>
-      <p class="desc">The #1 multi-timeframe backtesting engine with realistic spreads, automated trade logs & tick replay.</p>
-      <div class="btn-grid">
-        <button class="btn btn-primary" onclick="showCheckout('Fxreplay Pro (Monthly)', '750 ETB')">📅 Monthly - 750 ETB</button>
-        <button class="btn btn-success" onclick="showCheckout('Fxreplay Pro (2 Weeks)', '550 ETB')">⏳ 2 Weeks - 550 ETB</button>
-      </div>
-      <button class="btn btn-secondary" style="margin-top: 8px;" onclick="showCheckout('Fxreplay Pro (Weekly)', '250 ETB')">⚡ Weekly Pass - 250 ETB</button>
-    </div>
-
-    <!-- TradingView Essential + CME -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">📈 TV Essential + CME Data</div>
-        <span class="badge badge-blue">Best Seller</span>
-      </div>
-      <p class="desc">Essential charting tools paired with real-time CME market data feeds for Futures & Indices.</p>
-      <div class="btn-grid">
-        <button class="btn btn-primary" onclick="showCheckout('TV Essential + CME (1 Month)', '1,350 ETB')">1 Month - 1,350 ETB</button>
-        <button class="btn btn-success" onclick="showCheckout('TV Essential + CME (3 Months)', '3,600 ETB')">3 Months - 3,600 ETB</button>
-      </div>
-    </div>
-
-    <!-- TradingView Essential Pure -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">📈 TradingView Essential</div>
-        <span class="badge badge-green">In Stock</span>
-      </div>
-      <p class="desc">Standard charting with 5 indicators per chart, unlimited saved layouts and custom timeframes.</p>
-      <div class="btn-grid">
-        <button class="btn btn-primary" onclick="showCheckout('TradingView Essential (1 Month)', '1,100 ETB')">1 Month - 1,100 ETB</button>
-        <button class="btn btn-success" onclick="showCheckout('TradingView Essential (3 Months)', '2,950 ETB')">3 Months - 2,950 ETB</button>
-      </div>
-    </div>
-
-    <!-- TradingView Premium (Out of Stock) -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">📊 TradingView Premium</div>
-        <span class="badge badge-red">Out of Stock</span>
-      </div>
-      <p class="desc">25 indicators per chart, 8 charts per tab, and second-based intervals.</p>
-      <button class="btn btn-disabled" disabled>🚫 Restocking Soon</button>
-    </div>
-
-    <div class="footer">
-      <p>Need support? Contact <a href="https://t.me/${SUPPORT_USERNAME}">@${SUPPORT_USERNAME}</a></p>
-      <p style="margin-top: 4px;">A T T S © 2026 Abyssinia Trading</p>
-    </div>
-  </div>
-
-  <!-- CHECKOUT VIEW -->
-  <div id="checkoutView">
-    <button class="btn btn-secondary" style="margin-bottom: 16px; width: auto;" onclick="showStore()">⬅️ Back to Products</button>
-    <div class="checkout-box">
-      <h2 style="font-size: 18px; margin-bottom: 4px; color: #fff;">🧾 Order Checkout</h2>
-      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;" id="orderTitle">Package</p>
-      
-      <div style="font-size: 24px; font-weight: bold; color: #38bdf8; margin-bottom: 16px;" id="orderPrice">0 ETB</div>
-
-      <!-- Telebirr Pay Card -->
-      <div class="pay-card">
-        <div style="font-weight: 600; color: #4ade80; margin-bottom: 4px;">📱 Telebirr (Mobile Money)</div>
-        <p style="font-size: 12px; color: var(--text-muted);">Account Name: Berihanu</p>
-        <div class="copy-chip" onclick="copyText('0938652861')">0938652861 📋 (Tap to copy)</div>
-      </div>
-
-      <!-- Binance Pay Card -->
-      <div class="pay-card">
-        <div style="font-weight: 600; color: #fbbf24; margin-bottom: 4px;">💎 Binance Pay (USDT)</div>
-        <p style="font-size: 12px; color: var(--text-muted);">Payee Name: ABYSSINIAVENDOR</p>
-        <div class="copy-chip" onclick="copyText('874067761')">874067761 📋 (Tap to copy)</div>
-      </div>
-
-      <div style="background: rgba(37,99,235,0.1); border: 1px dashed var(--primary); padding: 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; color: #cbd5e1; margin-top: 16px;">
-        ⚠️ <b>Next Step:</b> After completing your payment, close this window and send your screenshot receipt directly in the bot chat to receive your login credentials.
-      </div>
-
-      <button class="btn btn-primary" style="margin-top: 16px;" onclick="closeApp()">✅ Done & Send Receipt in Bot</button>
-    </div>
-  </div>
-
-  <script>
-    const tg = window.Telegram?.WebApp;
-    if (tg) {
-      tg.expand();
-      tg.ready();
-    }
-
-    function showCheckout(title, price) {
-      document.getElementById('storeView').style.display = 'none';
-      document.getElementById('checkoutView').style.display = 'block';
-      document.getElementById('orderTitle').innerText = title;
-      document.getElementById('orderPrice').innerText = price;
-      window.scrollTo(0, 0);
-    }
-
-    function showStore() {
-      document.getElementById('checkoutView').style.display = 'none';
-      document.getElementById('storeView').style.display = 'block';
-    }
-
-    function copyText(text) {
-      navigator.clipboard.writeText(text).then(() => {
-        if (tg && tg.showPopup) {
-          tg.showPopup({ message: 'Copied to clipboard: ' + text });
-        } else {
-          alert('Copied: ' + text);
-        }
-      });
-    }
-
-    function closeApp() {
-      if (tg) {
-        tg.close();
-      }
-    }
-  </script>
-</body>
-</html>`;
-
-// 🌐 HTTP Health Check & Web App Server
+// 🌐 Health Check HTTP Server
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
-  if (req.url === '/store' || req.url === '/webapp') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(MINI_APP_HTML);
-  }
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('A T T S Telegram Bot & Mini App Server is LIVE 24/7!');
+  res.end('A T T S Telegram Bot Server is LIVE 24/7!');
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 HTTP Health Check & Web App Server listening on port ${PORT}`);
+  console.log(`🌐 HTTP Health Check Server listening on port ${PORT}`);
 });
 
 // ⏰ Safe Keep-Alive
@@ -660,8 +465,15 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   );
 }
 
-function sendMainMenu(ctx) {
-  const storeUrl = `${WEBAPP_URL}/store`;
+// Clean Main Menu with "Trading Tools"
+async function sendMainMenu(ctx) {
+  // Clear any existing cached bottom keyboard
+  try {
+    await ctx.reply("🔄 <i>Loading menu...</i>", {
+      parse_mode: 'HTML',
+      reply_markup: { remove_keyboard: true }
+    });
+  } catch (e) {}
 
   return ctx.reply(
     "👋 <b>Welcome to A T T S - Abyssinia Trading Tools Store!</b>\n\n" +
@@ -669,10 +481,8 @@ function sendMainMenu(ctx) {
     "Select an option below to get started:",
     {
       parse_mode: 'HTML',
-      ...Markup.removeKeyboard(),
       ...Markup.inlineKeyboard([
-        [Markup.button.webApp('🛍️ Open ATTS Storefront', storeUrl)],
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
+        [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
         [Markup.button.callback('💳 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
         [Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help & FAQ', 'ACTION_FAQ')],
         [Markup.button.url('💬 Support', 'https://t.me/' + SUPPORT_USERNAME)]
@@ -728,6 +538,14 @@ bot.command('dbstatus', async (ctx) => {
   }
 });
 
+// 🧹 Clear Any Cached Keyboard
+bot.command('clearkeyboard', async (ctx) => {
+  await ctx.reply("🧹 Removing reply keyboard...", {
+    reply_markup: { remove_keyboard: true }
+  });
+  return sendMainMenu(ctx);
+});
+
 // ⏳ Admin Expire Command (/expire <userId>)
 bot.command('expire', async (ctx) => {
   try {
@@ -752,11 +570,11 @@ bot.command('expire', async (ctx) => {
         targetUserId,
         "⏳ <b>Subscription Expired</b>\n\n" +
         "Your trading tool subscription has expired. We hope it assisted your trading!\n\n" +
-        "To renew your subscription or choose another plan, click the shop button below:",
+        "To renew your subscription or choose another plan, click the button below:",
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('🛍️ Renew / Shop Now', 'ACTION_SHOP')],
+            [Markup.button.callback('📊 Renew / Trading Tools', 'ACTION_SHOP')],
             [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
           ])
         }
@@ -854,21 +672,18 @@ bot.action('VERIFY_JOIN', async (ctx) => {
   } catch (err) {}
 });
 
-// 🛍️ 2. SHOP NOW INLINE MENU
+// 🛍️ 2. TRADING TOOLS MENU
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
     if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
-    const storeUrl = `${WEBAPP_URL}/store`;
-
     ctx.reply(
-      "🛍️ <b>A T T S Product Shop</b>\n\n" +
-      "You can browse our full graphical Storefront or select directly from the menu below:",
+      "📊 <b>A T T S Trading Tools</b>\n\n" +
+      "Select a trading tool below to view specifications, available plans, and instant pricing:",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('✨ Open Full Web App Storefront', storeUrl)],
           [Markup.button.callback('📊 TradingView Premium', 'VIEW_tvprem_pure')],
           [Markup.button.callback('📊 TradingView Premium + CME Data', 'VIEW_tvprem')],
           [Markup.button.callback('📈 TradingView Essential', 'VIEW_tvess_pure')],
@@ -892,7 +707,7 @@ bot.action('VIEW_abyssinia_journal', (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.url('📢 Follow Updates in Channel', 'https://t.me/abyssiniatradinget')],
-        [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
+        [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP')],
         [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ])
     }
@@ -903,7 +718,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
   try {
     const prodKey = ctx.match[1];
     const product = PRODUCTS_CATALOG[prodKey];
-    if (!product) return ctx.reply("Product not found.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    if (!product) return ctx.reply("Product not found.", Markup.inlineKeyboard([[Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]]));
 
     if (product.outOfStock) {
       return ctx.reply(
@@ -915,7 +730,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [Markup.button.url('📢 Go To Official Channel', 'https://t.me/abyssiniatradinget')],
-            [Markup.button.callback('🛍️ Back To Shop', 'ACTION_SHOP')],
+            [Markup.button.callback('📊 Back To Trading Tools', 'ACTION_SHOP')],
             [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
           ])
         }
@@ -933,7 +748,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
         [Markup.button.callback('📅 Monthly subscription plan', 'FXR_TIER_monthly')],
         [Markup.button.callback('⏳ Two weeks subscription plan', 'FXR_TIER_twoweeks')],
         [Markup.button.callback('⚡ Weekly subscription plan', 'FXR_TIER_weekly')],
-        [Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⬅️ Back To Trading Tools', 'ACTION_SHOP'), Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
       ];
       return ctx.reply(descText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(tierButtons) });
     }
@@ -949,7 +764,7 @@ bot.action(/^VIEW_(tvprem_pure|tvprem|tvess_pure|tvess|fxr)$/, async (ctx) => {
     });
 
     planButtons.push([
-      Markup.button.callback('⬅️ Back To Shop', 'ACTION_SHOP'),
+      Markup.button.callback('⬅️ Back To Trading Tools', 'ACTION_SHOP'),
       Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')
     ]);
 
@@ -968,7 +783,7 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
 
     optionButtons.push([
       Markup.button.callback('⬅️ Back to Fxreplay Plans', 'VIEW_fxr'),
-      Markup.button.callback('🛍️ Shop', 'ACTION_SHOP')
+      Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')
     ]);
 
     ctx.reply(`🔄 <b>Fxreplay Pro — ${tier.name}</b>\n\nPlease select the package configuration you want:`, {
@@ -994,7 +809,7 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
       }
     }
 
-    if (!selectedOpt) return ctx.reply("Option error.", Markup.inlineKeyboard([[Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')]]));
+    if (!selectedOpt) return ctx.reply("Option error.", Markup.inlineKeyboard([[Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]]));
 
     userSessions[ctx.from.id] = {
       productId: 'fxr',
@@ -1070,7 +885,7 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+        [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
         [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
       ])
     }
@@ -1087,7 +902,7 @@ bot.action('ACTION_OFFERS', (ctx) => {
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+        [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
         [Markup.button.callback('⬅️ Back To Main Menu', 'ACTION_MAIN_MENU')]
       ])
     }
@@ -1172,7 +987,7 @@ bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
           [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
         ])
       }
@@ -1215,7 +1030,7 @@ bot.action('MY_ORDERS_HISTORY', async (ctx) => {
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🛍️ Shop First Product', 'ACTION_SHOP')],
+          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
           [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
         ])
       }
@@ -1245,7 +1060,7 @@ bot.action('MY_ORDERS_KEYS', async (ctx) => {
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🛍️ Shop Now', 'ACTION_SHOP')],
+          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
           [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
         ])
       }
@@ -1445,7 +1260,7 @@ async function startApplication() {
   try {
     await bot.telegram.deleteWebhook({ drop_pending_updates: false });
     await bot.launch();
-    console.log('🚀 A T T S Telegram Bot & Mini App is LIVE and connected!');
+    console.log('🚀 A T T S Telegram Bot is LIVE and connected!');
   } catch (err) {
     console.error('Bot launch error, retrying in 5s...', err.message);
     setTimeout(startApplication, 5000);
