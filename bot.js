@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 A T T S - ABYSSINIA TRADING TOOLS STORE (@abyssiniatradingbot)
-// PRODUCTION SCRIPT: "TRADING TOOLS" BRANDED CLEAN UI
+// PRODUCTION SCRIPT: COMPLETE STORE + CUSTOMER WALLET SYSTEM
 // ============================================================
 
 require('dotenv').config();
@@ -41,7 +41,18 @@ process.on('uncaughtException', (err) => {
   console.error('⚠️ Uncaught Exception:', err.message);
 });
 
-// 📁 MONGOOSE DATABASE SCHEMA
+// ============================================================
+// 📁 MONGOOSE DATABASE SCHEMAS
+// ============================================================
+
+const UserSchema = new mongoose.Schema({
+  userId: { type: String, required: true, unique: true, index: true },
+  username: { type: String, default: '' },
+  balance: { type: Number, default: 0 },
+  referrerId: { type: String, default: null },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const OrderSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   username: { type: String, default: 'Trader' },
@@ -49,6 +60,7 @@ const OrderSchema = new mongoose.Schema({
   plan: { type: String, default: 'Standard' },
   status: { type: String, default: 'Pending' }, // 'Pending' | 'Active' | 'Expired' | 'Rejected'
   price: { type: String, default: 'Paid' },
+  paymentMethod: { type: String, default: 'Direct' }, // 'Wallet' | 'Telebirr' | 'Binance'
   credentials: { type: String, default: '' },
   currentWeek: { type: Number, default: 1 },
   totalWeeks: { type: Number, default: 1 },
@@ -57,29 +69,49 @@ const OrderSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-const UserSchema = new mongoose.Schema({
-  userId: { type: String, required: true, unique: true },
-  username: { type: String, default: '' },
-  referrerId: { type: String, default: null },
+const DepositSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  username: { type: String, default: 'Trader' },
+  amount: { type: Number, required: true },
+  method: { type: String, default: 'Telebirr' },
+  refCode: { type: String, required: true, unique: true },
+  status: { type: String, default: 'PENDING' }, // 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+  receiptPhotoId: { type: String, default: '' },
+  adminReason: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+  processedAt: { type: Date, default: null }
+});
+
+const WalletTransactionSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  type: { type: String, required: true }, // 'DEPOSIT' | 'PURCHASE' | 'ADMIN_CREDIT' | 'ADMIN_DEBIT'
+  amount: { type: Number, required: true },
+  balanceAfter: { type: Number, required: true },
+  description: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });
 
-const Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
+const Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
+const Deposit = mongoose.models.Deposit || mongoose.model('Deposit', DepositSchema);
+const WalletTransaction = mongoose.models.WalletTransaction || mongoose.model('WalletTransaction', WalletTransactionSchema);
 
 let isMongoConnected = false;
-let mongoErrorDetails = "MONGODB_URI environment variable is missing on Render";
+let mongoErrorDetails = "MONGODB_URI is not configured yet";
 
+// Temporary fallback in-memory cache if MongoDB is offline
 const fallbackDb = {
-  users: new Set(),
+  users: new Map(),
   userOrders: {},
+  deposits: [],
+  transactions: {},
   referrerOf: {},
   referrals: {}
 };
 
 async function connectToMongo() {
   if (!MONGODB_URI) {
-    console.log("❌ WARNING: MONGODB_URI is not set. Using temporary memory.");
+    console.log("❌ WARNING: MONGODB_URI is not set. Using temporary memory store.");
     return;
   }
 
@@ -119,10 +151,12 @@ async function checkExpiredOrders() {
     }
   }
 }
-
 setInterval(checkExpiredOrders, 60 * 60 * 1000);
 
-// DB Helpers
+// ============================================================
+// 💰 WALLET & USER DATABASE HELPERS
+// ============================================================
+
 async function recordUser(userId, username, referrerId = null) {
   userId = String(userId);
   if (isMongoConnected) {
@@ -135,12 +169,141 @@ async function recordUser(userId, username, referrerId = null) {
       return;
     } catch (e) {}
   }
-  fallbackDb.users.add(userId);
+  if (!fallbackDb.users.has(userId)) {
+    fallbackDb.users.set(userId, { userId, username: username || '', balance: 0, referrerId });
+  }
   if (referrerId && !fallbackDb.referrerOf[userId]) {
     fallbackDb.referrerOf[userId] = referrerId;
     if (!fallbackDb.referrals[referrerId]) fallbackDb.referrals[referrerId] = [];
     fallbackDb.referrals[referrerId].push(userId);
   }
+}
+
+async function getUserBalance(userId) {
+  userId = String(userId);
+  if (isMongoConnected) {
+    try {
+      const user = await User.findOne({ userId });
+      return user ? (user.balance || 0) : 0;
+    } catch (e) {}
+  }
+  const memUser = fallbackDb.users.get(userId);
+  return memUser ? (memUser.balance || 0) : 0;
+}
+
+async function creditWallet(userId, amount, description = 'Wallet Deposit', type = 'DEPOSIT') {
+  userId = String(userId);
+  amount = Math.abs(Number(amount));
+
+  if (isMongoConnected) {
+    try {
+      const user = await User.findOneAndUpdate(
+        { userId },
+        { $inc: { balance: amount } },
+        { upsert: true, new: true }
+      );
+      await WalletTransaction.create({
+        userId,
+        type,
+        amount,
+        balanceAfter: user.balance,
+        description
+      });
+      return user.balance;
+    } catch (e) {}
+  }
+
+  let memUser = fallbackDb.users.get(userId);
+  if (!memUser) {
+    memUser = { userId, username: '', balance: 0 };
+    fallbackDb.users.set(userId, memUser);
+  }
+  memUser.balance += amount;
+  if (!fallbackDb.transactions[userId]) fallbackDb.transactions[userId] = [];
+  fallbackDb.transactions[userId].unshift({
+    type,
+    amount,
+    balanceAfter: memUser.balance,
+    description,
+    createdAt: new Date()
+  });
+  return memUser.balance;
+}
+
+async function debitWallet(userId, amount, description = 'Product Purchase', type = 'PURCHASE') {
+  userId = String(userId);
+  amount = Math.abs(Number(amount));
+
+  if (isMongoConnected) {
+    try {
+      const user = await User.findOne({ userId });
+      if (!user || (user.balance || 0) < amount) return null; // Insufficient
+      user.balance -= amount;
+      await user.save();
+      await WalletTransaction.create({
+        userId,
+        type,
+        amount: -amount,
+        balanceAfter: user.balance,
+        description
+      });
+      return user.balance;
+    } catch (e) {}
+  }
+
+  let memUser = fallbackDb.users.get(userId);
+  if (!memUser || (memUser.balance || 0) < amount) return null;
+  memUser.balance -= amount;
+  if (!fallbackDb.transactions[userId]) fallbackDb.transactions[userId] = [];
+  fallbackDb.transactions[userId].unshift({
+    type,
+    amount: -amount,
+    balanceAfter: memUser.balance,
+    description,
+    createdAt: new Date()
+  });
+  return memUser.balance;
+}
+
+async function getWalletTransactions(userId) {
+  userId = String(userId);
+  if (isMongoConnected) {
+    try {
+      return await WalletTransaction.find({ userId }).sort({ createdAt: -1 }).limit(10);
+    } catch (e) {}
+  }
+  return (fallbackDb.transactions[userId] || []).slice(0, 10);
+}
+
+async function createDepositRequest(userId, username, amount, method, refCode, photoId = '') {
+  userId = String(userId);
+  if (isMongoConnected) {
+    try {
+      return await Deposit.create({
+        userId,
+        username: username || '',
+        amount,
+        method,
+        refCode,
+        status: 'PENDING',
+        receiptPhotoId: photoId
+      });
+    } catch (e) {}
+  }
+
+  const dep = {
+    _id: Date.now().toString(),
+    userId,
+    username: username || '',
+    amount,
+    method,
+    refCode,
+    status: 'PENDING',
+    receiptPhotoId: photoId,
+    createdAt: new Date()
+  };
+  fallbackDb.deposits.unshift(dep);
+  return dep;
 }
 
 async function getUserOrders(userId) {
@@ -154,7 +317,7 @@ async function getUserOrders(userId) {
   return fallbackDb.userOrders[userId] || [];
 }
 
-async function addPendingOrder(userId, username, tool, plan, price) {
+async function addPendingOrder(userId, username, tool, plan, price, paymentMethod = 'Direct') {
   userId = String(userId);
   const isMonthlyFxr = tool.toLowerCase().includes('fxreplay') && (plan.toLowerCase().includes('month') || tool.toLowerCase().includes('month'));
   const isTwoWeekFxr = tool.toLowerCase().includes('fxreplay') && (plan.toLowerCase().includes('two') || tool.toLowerCase().includes('2'));
@@ -169,6 +332,7 @@ async function addPendingOrder(userId, username, tool, plan, price) {
         plan,
         status: 'Pending',
         price: `${price} ETB`,
+        paymentMethod,
         credentials: '',
         totalWeeks: totalWeeks,
         currentWeek: 1
@@ -184,6 +348,7 @@ async function addPendingOrder(userId, username, tool, plan, price) {
     plan,
     status: 'Pending',
     price: `${price} ETB`,
+    paymentMethod,
     credentials: '',
     totalWeeks: totalWeeks,
     currentWeek: 1,
@@ -240,104 +405,8 @@ async function activateOrder(userId, customMessage, durationDays = null) {
   }
 }
 
-async function updateWeeklyAccount(userId, weekNum, credentials) {
-  userId = String(userId);
-  weekNum = parseInt(weekNum, 10);
-
-  if (isMongoConnected) {
-    try {
-      let targetOrder = await Order.findOne({ userId, status: 'Pending' }).sort({ createdAt: -1 });
-      if (!targetOrder) {
-        targetOrder = await Order.findOne({ userId, status: 'Active' }).sort({ createdAt: -1 });
-      }
-
-      if (targetOrder) {
-        targetOrder.status = 'Active';
-        targetOrder.currentWeek = weekNum;
-        targetOrder.credentials = credentials;
-        if (!targetOrder.weeklyHistory) targetOrder.weeklyHistory = [];
-        targetOrder.weeklyHistory.push({ week: weekNum, credentials, date: new Date() });
-        await targetOrder.save();
-        return targetOrder;
-      } else {
-        return await Order.create({
-          userId,
-          tool: 'Fxreplay Pro Subscription',
-          plan: 'Standard Plan',
-          status: 'Active',
-          price: 'Paid',
-          currentWeek: weekNum,
-          totalWeeks: 5,
-          credentials: credentials,
-          weeklyHistory: [{ week: weekNum, credentials, date: new Date() }]
-        });
-      }
-    } catch (e) {}
-  }
-
-  if (!fallbackDb.userOrders[userId]) fallbackDb.userOrders[userId] = [];
-  let order = fallbackDb.userOrders[userId].find(o => o.status === 'Pending') || fallbackDb.userOrders[userId].find(o => o.status === 'Active');
-  if (order) {
-    order.status = 'Active';
-    order.currentWeek = weekNum;
-    order.credentials = credentials;
-    if (!order.weeklyHistory) order.weeklyHistory = [];
-    order.weeklyHistory.push({ week: weekNum, credentials, date: new Date() });
-  } else {
-    fallbackDb.userOrders[userId].unshift({
-      _id: Date.now().toString(),
-      userId,
-      tool: 'Fxreplay Pro Subscription',
-      plan: 'Standard Plan',
-      status: 'Active',
-      price: 'Paid',
-      currentWeek: weekNum,
-      totalWeeks: 5,
-      credentials: credentials,
-      weeklyHistory: [{ week: weekNum, credentials, date: new Date() }]
-    });
-  }
-}
-
-async function expireUserOrders(userId) {
-  userId = String(userId);
-  let updatedCount = 0;
-  if (isMongoConnected) {
-    try {
-      const result = await Order.updateMany(
-        { userId, status: 'Active' },
-        { status: 'Expired' }
-      );
-      updatedCount = result.modifiedCount || 0;
-    } catch (e) {}
-  } else if (fallbackDb.userOrders[userId]) {
-    fallbackDb.userOrders[userId].forEach(o => {
-      if (o.status === 'Active') {
-        o.status = 'Expired';
-        updatedCount++;
-      }
-    });
-  }
-  return updatedCount;
-}
-
-async function rejectPendingOrder(userId) {
-  userId = String(userId);
-  if (isMongoConnected) {
-    try {
-      await Order.findOneAndUpdate(
-        { userId, status: 'Pending' },
-        { status: 'Rejected' },
-        { sort: { createdAt: -1 } }
-      );
-    } catch (e) {}
-  } else if (fallbackDb.userOrders[userId]) {
-    const pending = fallbackDb.userOrders[userId].find(o => o.status === 'Pending');
-    if (pending) pending.status = 'Rejected';
-  }
-}
-
-const userSessions = {}; // Transient checkout session
+// In-flight user session tracking
+const userSessions = {};
 
 // Payment Accounts
 const PAYMENT_INFO = {
@@ -345,7 +414,7 @@ const PAYMENT_INFO = {
   binance: { id: "874067761", name: "ABYSSINIAVENDOR" }
 };
 
-// Clean Catalog
+// Catalog configuration
 const PRODUCTS_CATALOG = {
   "tvprem_pure": { id: "tvprem_pure", title: "📊 TradingView Premium", tagline: "Top tier TradingView plan.", outOfStock: true },
   "tvprem": { id: "tvprem", title: "📊 TradingView Premium + CME Data", tagline: "Top tier with CME Data.", outOfStock: true },
@@ -407,18 +476,17 @@ const PRODUCTS_CATALOG = {
   }
 };
 
-// 🌐 Health Check HTTP Server
+// 🌐 Health Check HTTP Server for Render
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('A T T S Telegram Bot Server is LIVE 24/7!');
 });
-
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 HTTP Health Check Server listening on port ${PORT}`);
 });
 
-// ⏰ Safe Keep-Alive
+// Safe Keep-Alive
 if (process.env.RENDER_EXTERNAL_URL) {
   const pingUrl = process.env.RENDER_EXTERNAL_URL;
   const client = pingUrl.startsWith('https') ? https : http;
@@ -427,10 +495,10 @@ if (process.env.RENDER_EXTERNAL_URL) {
   }, 10 * 60 * 1000);
 }
 
-// 🛡️ Middleware: Ignore Channel & Group Posts (Only handle private chats)
+// 🛡️ Middleware: Ignore Channel & Group Messages
 bot.use((ctx, next) => {
   if (ctx.channelPost || (ctx.chat && ctx.chat.type !== 'private')) {
-    return; // Silently ignore channel and group messages
+    return;
   }
   return next();
 });
@@ -456,7 +524,7 @@ function sendJoinChannelMessage(ctx, missingChannels) {
 
   return ctx.reply(
     "⚠️ <b>Access Required Before Using A T T S Bot!</b>\n\n" +
-    "To access our premium trading tools, pricing catalogs, and instant orders, you must first join our official community channels:\n\n" +
+    "To access our premium trading tools, wallet deposits, and instant orders, you must first join our official community channels:\n\n" +
     "1️⃣ @abyssiniatradinget (Official Channel)\n" +
     "2️⃣ @abyssiniachat (Trading Discussion Community)\n" +
     "3️⃣ @abyssiniattstore (Store & Updates)\n\n" +
@@ -465,9 +533,11 @@ function sendJoinChannelMessage(ctx, missingChannels) {
   );
 }
 
-// Clean Main Menu with "Trading Tools"
+// ============================================================
+// 🏠 MAIN MENU (Includes "💰 Wallet")
+// ============================================================
+
 async function sendMainMenu(ctx) {
-  // Clear any existing cached bottom keyboard
   try {
     await ctx.reply("🔄 <i>Loading menu...</i>", {
       parse_mode: 'HTML',
@@ -482,197 +552,190 @@ async function sendMainMenu(ctx) {
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP'), Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
-        [Markup.button.callback('💳 Pricing', 'ACTION_PRICING'), Markup.button.callback('🎁 Offers', 'ACTION_OFFERS')],
-        [Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL'), Markup.button.callback('❓ Help & FAQ', 'ACTION_FAQ')],
-        [Markup.button.url('💬 Support', 'https://t.me/' + SUPPORT_USERNAME)]
+        [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP'), Markup.button.callback('💰 Wallet', 'ACTION_WALLET')],
+        [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS'), Markup.button.callback('💳 Pricing', 'ACTION_PRICING')],
+        [Markup.button.callback('🎁 Offers', 'ACTION_OFFERS'), Markup.button.callback('🤝 Referral', 'ACTION_REFERRAL')],
+        [Markup.button.callback('❓ Help & FAQ', 'ACTION_FAQ'), Markup.button.url('💬 Support', 'https://t.me/' + SUPPORT_USERNAME)]
       ])
     }
   );
 }
 
-function sendFAQMenu(ctx) {
-  return ctx.reply(
-    "❓ <b>FREQUENTLY ASKED QUESTIONS (FAQ)</b>\n\n" +
-    "Click any question below for quick answers or contact our 24/7 support team:",
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('⏱️ How Long Does Delivery Take?', 'FAQ_DELIVERY')],
-        [Markup.button.callback('💳 How Do I Pay?', 'FAQ_PAYMENT')],
-        [Markup.button.callback('🔒 Is This An Official Subscription?', 'FAQ_OFFICIAL')],
-        [Markup.button.callback('🔄 Can I Change My Account?', 'FAQ_CHANGE_ACC')],
-        [Markup.button.callback('⏰ What Happens When My Subscription Expires?', 'FAQ_EXPIRY')],
-        [Markup.button.callback('🛠️ What If I Have A Problem?', 'FAQ_PROBLEM')],
-        [Markup.button.callback('📞 How Do I Contact Support?', 'FAQ_SUPPORT')],
-        [Markup.button.callback('🔙 Back To Main Menu', 'ACTION_MAIN_MENU')]
-      ])
-    }
-  );
-}
+// ============================================================
+// 💰 CUSTOMER WALLET SYSTEM
+// ============================================================
 
-// 🩺 Database Status Diagnostic Command (/dbstatus)
-bot.command('dbstatus', async (ctx) => {
-  if (isMongoConnected) {
-    let orderCount = 0;
-    let userCount = 0;
-    try {
-      orderCount = await Order.countDocuments();
-      userCount = await User.countDocuments();
-    } catch (e) {}
-
-    return ctx.reply(
-      "🟢 <b>DATABASE STATUS: CLOUD MONGO CONNECTED!</b>\n\n" +
-      "✅ <b>Storage Type:</b> Permanent MongoDB Cloud\n" +
-      `📦 <b>Total Saved Orders:</b> ${orderCount}\n` +
-      `👥 <b>Total Saved Users:</b> ${userCount}\n\n` +
-      "🎉 <i>Your orders will NEVER be deleted even when you redeploy on Render!</i>",
-      { parse_mode: 'HTML' }
-    );
-  } else {
-    return ctx.reply(
-      "🔴 <b>DATABASE STATUS: TEMPORARY MEMORY (DISCONNECTED)</b>\n\n" +
-      "⚠️ <b>Why:</b> " + mongoErrorDetails,
-      { parse_mode: 'HTML' }
-    );
-  }
-});
-
-// 🧹 Clear Any Cached Keyboard
-bot.command('clearkeyboard', async (ctx) => {
-  await ctx.reply("🧹 Removing reply keyboard...", {
-    reply_markup: { remove_keyboard: true }
-  });
-  return sendMainMenu(ctx);
-});
-
-// ⏳ Admin Expire Command (/expire <userId>)
-bot.command('expire', async (ctx) => {
+// 1. Wallet Main Page
+bot.action('ACTION_WALLET', async (ctx) => {
   try {
-    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
-      return ctx.reply('This command is restricted to the administrator only.');
-    }
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
+    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
 
-    const parts = ctx.message.text.trim().split(' ');
-    if (parts.length < 2) {
-      return ctx.reply('Usage format:\n/expire <USER_ID>\n\nExample:\n/expire 5056286354');
-    }
+    delete userSessions[ctx.from.id];
+    const balance = await getUserBalance(ctx.from.id);
 
-    const targetUserId = parts[1];
-    const modifiedCount = await expireUserOrders(targetUserId);
-
-    if (modifiedCount === 0) {
-      return ctx.reply(`⚠️ No active orders found for user ID: ${targetUserId}`);
-    }
-
-    try {
-      await bot.telegram.sendMessage(
-        targetUserId,
-        "⏳ <b>Subscription Expired</b>\n\n" +
-        "Your trading tool subscription has expired. We hope it assisted your trading!\n\n" +
-        "To renew your subscription or choose another plan, click the button below:",
+    if (balance > 0) {
+      return ctx.reply(
+        "💰 <b>MY WALLET</b>\n\n" +
+        "<b>Available Balance:</b>\n" +
+        `<b>${balance.toLocaleString()} ETB</b>\n\n` +
+        "Use your wallet balance to purchase or renew trading tools instantly.",
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('📊 Renew / Trading Tools', 'ACTION_SHOP')],
-            [Markup.button.url('💬 Contact Support', 'https://t.me/' + SUPPORT_USERNAME)]
+            [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
+            [Markup.button.callback('📜 Transaction History', 'WALLET_HISTORY')],
+            [Markup.button.callback('🛒 Buy with Wallet', 'ACTION_SHOP')],
+            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
           ])
         }
       );
-    } catch (e) {}
-
-    ctx.reply(`✅ Successfully expired active subscription for user ID: ${targetUserId}. Their access keys have been removed.`);
-  } catch (err) {
-    ctx.reply('Error in expire command: ' + err.message);
-  }
-});
-
-// 📅 Weekly Account Delivery (/sendweek <userId> <weekNum> <credentials>)
-bot.command('sendweek', async (ctx) => {
-  try {
-    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
-      return ctx.reply('This command is restricted to the administrator only.');
-    }
-
-    const messageText = ctx.message.text.trim();
-    const parts = messageText.split(' ');
-
-    if (parts.length < 4) {
-      return ctx.reply('Usage format:\n/sendweek <USER_ID> <WEEK_NUM> <Credentials>\n\nExample:\n/sendweek 5056286354 2 Email: fx2@trade.com | Pass: 1234');
-    }
-
-    const targetUserId = parts[1];
-    const weekNum = parseInt(parts[2], 10);
-    const customMessage = parts.slice(3).join(' ');
-
-    if (isNaN(weekNum) || weekNum < 1 || weekNum > 10) {
-      return ctx.reply('Week number must be a valid number.');
-    }
-
-    const deliveryNotification = `🔄 <b>Fxreplay Weekly Account Update (Week ${weekNum})</b>\n\n` +
-                                 `Your active login credentials for <b>Week ${weekNum}</b> have been updated:\n\n` +
-                                 `🔐 <b>Login Details:</b>\n` +
-                                 `<code>${customMessage}</code>\n\n` +
-                                 `📂 <b>My Orders → 🔑 My Access</b>\n` +
-                                 `🔒 Keep your credentials secure.\n\n` +
-                                 `Need assistance?\n` +
-                                 `📩 @` + SUPPORT_USERNAME;
-
-    await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
-    await updateWeeklyAccount(targetUserId, weekNum, customMessage);
-
-    ctx.reply(`✅ Week ${weekNum} credentials sent and ACTIVATED for user ID: ${targetUserId}!`);
-  } catch (err) {
-    ctx.reply('Error in sendweek: ' + err.message);
-  }
-});
-
-// 1. /start command
-bot.start(async (ctx) => {
-  try {
-    const userId = ctx.from.id;
-    const startPayload = ctx.message.text.split(' ')[1];
-    let refId = null;
-
-    if (startPayload && startPayload.startsWith('ref_')) {
-      refId = startPayload.replace('ref_', '');
-      if (refId !== String(userId)) {
-        try {
-          await bot.telegram.sendMessage(
-            refId,
-            "🎉 <b>New trader joined via your referral link!</b>\n\nUser: @" + (ctx.from.username || 'Trader') + "\nYou will receive a 100 ETB bonus upon their first purchase!",
-            { parse_mode: 'HTML' }
-          );
-        } catch (e) {}
-      }
-    }
-
-    await recordUser(userId, ctx.from.username, refId);
-
-    const { allJoined, missing } = await checkAllChannelMemberships(ctx, userId);
-    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
-
-    return sendMainMenu(ctx);
-  } catch (err) {
-    console.error("Error in start:", err);
-  }
-});
-
-bot.action('VERIFY_JOIN', async (ctx) => {
-  try {
-    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
-    if (allJoined) {
-      try { await ctx.deleteMessage(); } catch (e) {}
-      ctx.reply("🎉 <b>Verification Successful!</b> Thank you for joining our community.", { parse_mode: 'HTML' });
-      return sendMainMenu(ctx);
     } else {
-      const remaining = missing.map(m => m.username).join(', ');
-      return ctx.answerCbQuery("❌ Please join all channels first! Remaining: " + remaining, { show_alert: true });
+      return ctx.reply(
+        "💰 <b>MY WALLET</b>\n\n" +
+        "<b>Available Balance:</b>\n" +
+        "<b>0 ETB</b>\n\n" +
+        "Your wallet is currently empty.",
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
+            [Markup.button.callback('🛒 Browse Trading Tools', 'ACTION_SHOP')],
+            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
+          ])
+        }
+      );
     }
   } catch (err) {}
 });
 
-// 🛍️ 2. TRADING TOOLS MENU
+// 2. Deposit Amount Selection
+bot.action('WALLET_DEPOSIT', async (ctx) => {
+  delete userSessions[ctx.from.id];
+  return ctx.reply(
+    "💳 <b>ADD FUNDS</b>\n\n" +
+    "Select an amount to add to your ATTS Wallet:",
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('100 ETB', 'DEP_AMT_100'), Markup.button.callback('250 ETB', 'DEP_AMT_250')],
+        [Markup.button.callback('500 ETB', 'DEP_AMT_500'), Markup.button.callback('1,000 ETB', 'DEP_AMT_1000')],
+        [Markup.button.callback('2,500 ETB', 'DEP_AMT_2500'), Markup.button.callback('5,000 ETB', 'DEP_AMT_5000')],
+        [Markup.button.callback('💵 Custom Amount', 'DEP_AMT_CUSTOM')],
+        [Markup.button.callback('⬅️ Back', 'ACTION_WALLET')]
+      ])
+    }
+  );
+});
+
+// Custom Deposit Input
+bot.action('DEP_AMT_CUSTOM', (ctx) => {
+  userSessions[ctx.from.id] = { awaitingCustomDeposit: true };
+  return ctx.reply(
+    "💵 <b>Custom Deposit Amount</b>\n\n" +
+    "Please type the amount in ETB you want to add to your wallet:\n" +
+    "(Minimum deposit: <b>100 ETB</b>)",
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('❌ Cancel', 'ACTION_WALLET')]
+      ])
+    }
+  );
+});
+
+// Preset Amount Clicked
+bot.action(/^DEP_AMT_(\d+)$/, (ctx) => {
+  const amount = parseInt(ctx.match[1], 10);
+  return showDepositMethodSelection(ctx, amount);
+});
+
+function showDepositMethodSelection(ctx, amount) {
+  return ctx.reply(
+    "💳 <b>DEPOSIT REQUEST</b>\n\n" +
+    `<b>Amount:</b> <b>${amount.toLocaleString()} ETB</b>\n\n` +
+    "Please choose your preferred payment method below:",
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📱 Telebirr', `DEP_METHOD_TELEBIRR_${amount}`)],
+        [Markup.button.callback('💎 Binance Pay', `DEP_METHOD_BINANCE_${amount}`)],
+        [Markup.button.callback('⬅️ Back', 'WALLET_DEPOSIT')]
+      ])
+    }
+  );
+}
+
+// Payment method selected -> Provide transfer instructions
+bot.action(/^DEP_METHOD_(TELEBIRR|BINANCE)_(\d+)$/, (ctx) => {
+  const method = ctx.match[1];
+  const amount = parseInt(ctx.match[2], 10);
+
+  userSessions[ctx.from.id] = {
+    type: 'DEPOSIT',
+    amount: amount,
+    method: method === 'TELEBIRR' ? 'Telebirr' : 'Binance'
+  };
+
+  let payText = '';
+  if (method === 'TELEBIRR') {
+    payText = `📱 <b>Telebirr Payment Details</b>\n\n` +
+              `• Phone Number: <code>${PAYMENT_INFO.telebirr.number}</code> (Tap to copy)\n` +
+              `• Account Name: <code>${PAYMENT_INFO.telebirr.name}</code>\n` +
+              `• Amount: <code>${amount.toLocaleString()} ETB</code>`;
+  } else {
+    payText = `💎 <b>Binance Payment Details</b>\n\n` +
+              `• Binance Pay ID: <code>${PAYMENT_INFO.binance.id}</code> (Tap to copy)\n` +
+              `• Payee Name: <code>${PAYMENT_INFO.binance.name}</code>\n` +
+              `• Amount: <code>${(amount / 100).toFixed(1)} USDT</code>`;
+  }
+
+  payText += `\n\n📤 <b>Submit Payment Proof:</b>\n` +
+             `After completing the payment, please upload your payment screenshot (receipt) or transaction/reference ID right here in this chat.`;
+
+  return ctx.reply(payText, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('❌ Cancel', 'ACTION_WALLET')]
+    ])
+  });
+});
+
+// 3. Wallet Transaction History
+bot.action('WALLET_HISTORY', async (ctx) => {
+  const userId = ctx.from.id;
+  const balance = await getUserBalance(userId);
+  const txList = await getWalletTransactions(userId);
+
+  let text = `📜 <b>WALLET TRANSACTION HISTORY</b>\n\n` +
+             `<b>Available Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n`;
+
+  if (!txList || txList.length === 0) {
+    text += "No wallet transactions recorded yet. Make a deposit to fund your wallet!";
+  } else {
+    txList.forEach((tx, idx) => {
+      const sign = tx.amount >= 0 ? '+' : '';
+      const icon = tx.amount >= 0 ? '🟢' : '🛒';
+      const dateStr = new Date(tx.createdAt).toLocaleDateString();
+      text += `${idx + 1}. ${icon} <b>${sign}${tx.amount.toLocaleString()} ETB</b>\n` +
+              `   • ${tx.description || tx.type}\n` +
+              `   • Date: ${dateStr} | Balance: ${tx.balanceAfter.toLocaleString()} ETB\n\n`;
+    });
+  }
+
+  return ctx.reply(text, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
+      [Markup.button.callback('⬅️ Back to Wallet', 'ACTION_WALLET')]
+    ])
+  });
+});
+
+// ============================================================
+// 📊 TRADING TOOLS CATALOG & WALLET CHECKOUT
+// ============================================================
+
 bot.action(['ACTION_SHOP', 'ACTION_BUY'], async (ctx) => {
   try {
     const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
@@ -778,7 +841,7 @@ bot.action(/^FXR_TIER_(monthly|twoweeks|weekly)$/, async (ctx) => {
     const tier = PRODUCTS_CATALOG['fxr'].tiers[tierKey];
 
     const optionButtons = tier.options.map(opt => [
-      Markup.button.callback(`👉 ${opt.name} - ${opt.price}birr`, `FXR_OPT_${opt.code}`)
+      Markup.button.callback(`👉 ${opt.name} - ${opt.price} ETB`, `FXR_OPT_${opt.code}`)
     ]);
 
     optionButtons.push([
@@ -811,7 +874,9 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
 
     if (!selectedOpt) return ctx.reply("Option error.", Markup.inlineKeyboard([[Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]]));
 
+    const balance = await getUserBalance(ctx.from.id);
     userSessions[ctx.from.id] = {
+      type: 'ORDER',
       productId: 'fxr',
       planKey: optCode,
       tool: `Fxreplay Pro - ${selectedOpt.name}`,
@@ -824,13 +889,15 @@ bot.action(/^FXR_OPT_(.+)$/, async (ctx) => {
       "📦 <b>Product:</b> Fxreplay Pro\n" +
       `📁 <b>Plan:</b> ${selectedTierName}\n` +
       `✨ <b>Package:</b> ${selectedOpt.name}\n` +
-      `💰 <b>Total Payable:</b> ${selectedOpt.price} ETB\n\n` +
+      `💰 <b>Total Payable:</b> ${selectedOpt.price} ETB\n` +
+      `💳 <b>Your Wallet Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n` +
       "Please choose your preferred payment method below:",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
+          [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_fxr_${optCode}`)],
           [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-          [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
+          [Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
           [Markup.button.callback('⬅️ Change Plan', 'VIEW_fxr')]
         ])
       }
@@ -846,7 +913,10 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
     if (!product || !product.plans || !product.plans[planCode]) return ctx.reply("Plan error.");
 
     const plan = product.plans[planCode];
+    const balance = await getUserBalance(ctx.from.id);
+
     userSessions[ctx.from.id] = {
+      type: 'ORDER',
       productId: prodKey,
       planKey: planCode,
       tool: `${product.title} (${plan.name})`,
@@ -858,13 +928,15 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
       "🧾 <b>Order Summary:</b>\n\n" +
       "📦 <b>Product:</b> " + product.title + "\n" +
       "⏱️ <b>Plan:</b> " + plan.name + "\n" +
-      "💰 <b>Total Payable:</b> " + plan.price + " ETB\n\n" +
+      "💰 <b>Total Payable:</b> " + plan.price + " ETB\n" +
+      `💳 <b>Your Wallet Balance:</b> <b>${balance.toLocaleString()} ETB</b>\n\n` +
       "Please choose your preferred payment method below:",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
+          [Markup.button.callback(`💰 Pay with Wallet (${balance.toLocaleString()} ETB)`, `PAY_WALLET_${prodKey}_${planCode}`)],
           [Markup.button.callback('📱 Telebirr', 'PAY_TELEBIRR')],
-          [Markup.button.callback('💎 Binance', 'PAY_BINANCE')],
+          [Markup.button.callback('💎 Binance Pay', 'PAY_BINANCE')],
           [Markup.button.callback('⬅️ Change Plan', "VIEW_" + prodKey)]
         ])
       }
@@ -872,7 +944,508 @@ bot.action(/^PLAN:(tvprem_pure|tvprem|tvess_pure|tvess):([a-z0-9]+)$/, async (ct
   } catch (err) {}
 });
 
-// 💳 PRICING
+// Pay with Wallet Handler
+bot.action(/^PAY_WALLET_(.+)$/, async (ctx) => {
+  const session = userSessions[ctx.from.id];
+  const price = session ? session.finalPrice : 750;
+  const toolName = session ? session.tool : "Trading Tool Access";
+  const planTitle = session ? session.planTitle : "Standard";
+
+  const userId = ctx.from.id;
+  const username = ctx.from.username || 'Trader';
+
+  const newBalance = await debitWallet(userId, price, `Purchase: ${toolName}`);
+
+  if (newBalance === null) {
+    const currentBalance = await getUserBalance(userId);
+    return ctx.reply(
+      "⚠️ <b>INSUFFICIENT WALLET BALANCE</b>\n\n" +
+      `<b>Product Price:</b> ${price.toLocaleString()} ETB\n` +
+      `<b>Your Balance:</b> ${currentBalance.toLocaleString()} ETB\n` +
+      `<b>Shortage:</b> ${(price - currentBalance).toLocaleString()} ETB\n\n` +
+      "Please add funds to your wallet or pay via Telebirr:",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('➕ Deposit Funds', 'WALLET_DEPOSIT')],
+          [Markup.button.callback('📱 Pay via Telebirr', 'PAY_TELEBIRR')],
+          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')]
+        ])
+      }
+    );
+  }
+
+  // Record completed order
+  await addPendingOrder(userId, username, toolName, planTitle, price, 'Wallet');
+
+  // Notify Admin
+  if (ADMIN_CHAT_ID) {
+    try {
+      await bot.telegram.sendMessage(
+        ADMIN_CHAT_ID,
+        `🚨 <b>NEW ORDER PAID VIA WALLET!</b>\n\n` +
+        `👤 Customer: @${username}\n` +
+        `🆔 User ID: <code>${userId}</code>\n` +
+        `📦 Product: <b>${toolName}</b>\n` +
+        `💰 Amount: <b>${price} ETB (Wallet Paid)</b>\n` +
+        `💳 Remaining Wallet: <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
+        `💡 Deliver Credentials:\n` +
+        `<code>/send ${userId} Email: ... | Pass: ...</code>`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (e) {}
+  }
+
+  return ctx.reply(
+    `🎉 <b>PURCHASE COMPLETED WITH WALLET!</b>\n\n` +
+    `📦 <b>Product:</b> ${toolName}\n` +
+    `💰 <b>Deducted:</b> -${price.toLocaleString()} ETB\n` +
+    `💳 <b>Remaining Balance:</b> <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
+    `✅ Your order is confirmed. Login credentials will be delivered within 5–15 minutes!\n\n` +
+    `Track your order in <b>📦 My Orders</b>.`,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
+        [Markup.button.callback('💰 View Wallet', 'ACTION_WALLET')],
+        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
+  );
+});
+
+// Direct Payment Method Selected
+bot.action(/PAY_(TELEBIRR|BINANCE)/, (ctx) => {
+  const method = ctx.match[1];
+  const session = userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
+  session.method = method;
+
+  let payText = '';
+  if (method === 'TELEBIRR') {
+    payText = "📱 <b>Telebirr Payment Details</b>\n\n" +
+              "• Phone Number: <code>" + PAYMENT_INFO.telebirr.number + "</code> (Tap to copy)\n" +
+              "• Account Name: <code>" + PAYMENT_INFO.telebirr.name + "</code>\n" +
+              "• Amount: <code>" + (session.finalPrice || 750) + " ETB</code>\n\n" +
+              "⚠️ <b>Important:</b> After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
+  } else {
+    payText = "💎 <b>Binance Payment Details</b>\n\n" +
+              "• Binance Pay ID: <code>" + PAYMENT_INFO.binance.id + "</code> (Tap to copy)\n" +
+              "• Payee Name: <code>" + PAYMENT_INFO.binance.name + "</code>\n" +
+              "• Amount: <code>" + ((session.finalPrice || 750) / 100).toFixed(1) + " USDT</code>\n\n" +
+              "⚠️ <b>Important:</b> After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
+  }
+
+  ctx.reply(payText, { parse_mode: 'HTML' });
+});
+
+// ============================================================
+// 📸 RECEIPT / PHOTO & TEXT HANDLERS
+// ============================================================
+
+bot.on('text', async (ctx, next) => {
+  const userId = ctx.from.id;
+  const session = userSessions[userId];
+
+  if (session && session.awaitingCustomDeposit) {
+    const text = ctx.message.text.trim();
+    const amount = parseInt(text.replace(/[^0-9]/g, ''), 10);
+
+    if (isNaN(amount) || amount < 100) {
+      return ctx.reply("❌ Invalid amount. Minimum deposit is 100 ETB. Please type a valid number (e.g. 500):");
+    }
+
+    delete session.awaitingCustomDeposit;
+    return showDepositMethodSelection(ctx, amount);
+  }
+
+  return next();
+});
+
+bot.on('photo', async (ctx) => {
+  try {
+    if (ctx.chat.type !== 'private') return;
+
+    const user = ctx.from;
+    const session = userSessions[user.id] || {};
+    const photo = ctx.message.photo.pop();
+
+    if (session.type === 'DEPOSIT') {
+      // 💳 Deposit Receipt Flow
+      const depositAmount = session.amount || 500;
+      const method = session.method || 'Telebirr';
+      const refCode = `DEP-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const dep = await createDepositRequest(user.id, user.username, depositAmount, method, refCode, photo.file_id);
+      const depId = String(dep._id || refCode);
+      delete userSessions[user.id];
+
+      if (ADMIN_CHAT_ID) {
+        try {
+          await bot.telegram.sendPhoto(
+            ADMIN_CHAT_ID,
+            photo.file_id,
+            {
+              caption: `💳 <b>PENDING WALLET DEPOSIT</b>\n\n` +
+                       `👤 <b>User:</b> @${user.username || 'NoUsername'}\n` +
+                       `🆔 <b>User ID:</b> <code>${user.id}</code>\n` +
+                       `💰 <b>Amount:</b> <b>${depositAmount.toLocaleString()} ETB</b>\n` +
+                       `💳 <b>Method:</b> ${method}\n` +
+                       `🔖 <b>Reference:</b> <code>${refCode}</code>\n\n` +
+                       `Click below to approve or reject:`,
+              parse_mode: 'HTML',
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback(`✅ Approve (+${depositAmount} ETB)`, `DEP_APPROVE_${depId}`)],
+                [Markup.button.callback('❌ Reject Deposit', `DEP_REJECT_${depId}`)]
+              ])
+            }
+          );
+        } catch (e) {}
+      }
+
+      return ctx.reply(
+        `⏳ <b>DEPOSIT PENDING</b>\n\n` +
+        `<b>Amount:</b> <b>${depositAmount.toLocaleString()} ETB</b>\n` +
+        `<b>Reference:</b> <code>${refCode}</code>\n\n` +
+        `Your payment is waiting for verification.\n\n` +
+        `You will receive a notification once it is reviewed.`,
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💰 Back to Wallet', 'ACTION_WALLET')]
+          ])
+        }
+      );
+    } else {
+      // 🛒 Direct Product Order Receipt Flow
+      const toolName = session.tool || 'Trading Tool Access';
+      const price = session.finalPrice || 750;
+      const planTitle = session.planTitle || 'Standard';
+
+      await addPendingOrder(user.id, user.username, toolName, planTitle, price, session.method || 'Direct');
+
+      if (ADMIN_CHAT_ID) {
+        try {
+          const captionText = "🚨 <b>NEW DIRECT ORDER RECEIPT RECEIVED!</b>\n\n" +
+                              "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
+                              "🆔 User ID: <code>" + user.id + "</code>\n" +
+                              "📦 Product: <b>" + toolName + "</b>\n" +
+                              "💰 Amount: <b>" + price + " ETB</b>\n" +
+                              "💳 Method: " + (session.method || 'Direct') + "\n\n" +
+                              "💡 Deliver credentials:\n" +
+                              "<code>/send " + user.id + " Email: ... | Pass: ...</code>\n\n" +
+                              "💡 Or with Auto-Expiry (e.g. 7d, 14d, 30d):\n" +
+                              "<code>/send " + user.id + " 30d Email: ... | Pass: ...</code>";
+
+          await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
+            caption: captionText,
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback("Reject Receipt (" + user.id + ")", "REJECT_" + user.id)]
+            ])
+          });
+        } catch (err) {}
+      }
+
+      return ctx.reply(
+        "⏳ <b>Receipt Received & Recorded!</b>\n\n" +
+        "Your order has been saved under <b>📦 My Orders</b> with status 🟡 <b>Pending Verification</b>.\n\n" +
+        "Our team is verifying the payment. Your login credentials will be delivered here within 5–15 minutes.",
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('📦 My Orders', 'ACTION_MY_ORDERS')],
+            [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+          ])
+        }
+      );
+    }
+  } catch (err) {}
+});
+
+// ============================================================
+// 👑 ADMIN WALLET DEPOSIT APPROVAL & REJECTION
+// ============================================================
+
+bot.action(/^DEP_APPROVE_(.+)$/, async (ctx) => {
+  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('Unauthorized');
+
+  const depId = ctx.match[1];
+  let deposit = null;
+
+  if (isMongoConnected) {
+    try {
+      deposit = await Deposit.findById(depId) || await Deposit.findOne({ refCode: depId });
+    } catch (e) {}
+  } else {
+    deposit = fallbackDb.deposits.find(d => d._id === depId || d.refCode === depId);
+  }
+
+  if (!deposit || deposit.status === 'APPROVED') {
+    return ctx.answerCbQuery('Deposit already approved or not found.');
+  }
+
+  deposit.status = 'APPROVED';
+  deposit.processedAt = new Date();
+  if (isMongoConnected) await deposit.save();
+
+  const newBalance = await creditWallet(deposit.userId, deposit.amount, `Deposit Approved (${deposit.refCode})`, 'DEPOSIT');
+
+  // Edit Admin Caption
+  try {
+    ctx.editMessageCaption(
+      (ctx.update.callback_query.message.caption || '') + `\n\n✅ <b>STATUS: APPROVED (+${deposit.amount} ETB)</b>\n💳 New Balance: ${newBalance.toLocaleString()} ETB`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (e) {}
+
+  // Notify Customer
+  try {
+    await bot.telegram.sendMessage(
+      deposit.userId,
+      "✅ <b>WALLET DEPOSIT APPROVED</b>\n\n" +
+      "Your wallet has been credited successfully.\n\n" +
+      `💰 <b>Added:</b> +${deposit.amount.toLocaleString()} ETB\n` +
+      `💳 <b>New Balance:</b> <b>${newBalance.toLocaleString()} ETB</b>\n\n` +
+      "Thank you for using ATTS.",
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🛒 Buy with Wallet', 'ACTION_SHOP')],
+          [Markup.button.callback('💰 View Wallet', 'ACTION_WALLET')]
+        ])
+      }
+    );
+  } catch (e) {}
+
+  return ctx.answerCbQuery('Deposit approved!');
+});
+
+bot.action(/^DEP_REJECT_(.+)$/, async (ctx) => {
+  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('Unauthorized');
+
+  const depId = ctx.match[1];
+  let deposit = null;
+
+  if (isMongoConnected) {
+    try {
+      deposit = await Deposit.findById(depId) || await Deposit.findOne({ refCode: depId });
+    } catch (e) {}
+  } else {
+    deposit = fallbackDb.deposits.find(d => d._id === depId || d.refCode === depId);
+  }
+
+  if (!deposit) return ctx.answerCbQuery('Deposit not found.');
+
+  deposit.status = 'REJECTED';
+  deposit.processedAt = new Date();
+  if (isMongoConnected) await deposit.save();
+
+  try {
+    ctx.editMessageCaption(
+      (ctx.update.callback_query.message.caption || '') + `\n\n❌ <b>STATUS: REJECTED</b>`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (e) {}
+
+  try {
+    await bot.telegram.sendMessage(
+      deposit.userId,
+      "❌ <b>DEPOSIT REJECTED</b>\n\n" +
+      `Your deposit request for <b>${deposit.amount.toLocaleString()} ETB</b> was rejected.\n\n` +
+      "<b>Reason:</b>\nPayment could not be verified with official bank records.\n\n" +
+      `Please contact support at @${SUPPORT_USERNAME} if you have any questions.`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (e) {}
+
+  return ctx.answerCbQuery('Deposit rejected.');
+});
+
+// ============================================================
+// 👑 ADMIN WALLET & ORDER COMMANDS
+// ============================================================
+
+// 1. /credit <userId> <amount> [reason]
+bot.command('credit', async (ctx) => {
+  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin access only.');
+
+  const parts = ctx.message.text.trim().split(' ');
+  if (parts.length < 3) {
+    return ctx.reply('Usage:\n/credit <USER_ID> <AMOUNT> [Reason]\n\nExample:\n/credit 5056286354 1000 Manual deposit adjustment');
+  }
+
+  const targetUserId = parts[1];
+  const amount = parseInt(parts[2], 10);
+  const reason = parts.slice(3).join(' ') || 'Admin Manual Credit';
+
+  if (isNaN(amount) || amount <= 0) return ctx.reply('Amount must be a positive number.');
+
+  const newBal = await creditWallet(targetUserId, amount, reason, 'ADMIN_CREDIT');
+
+  try {
+    await bot.telegram.sendMessage(
+      targetUserId,
+      `✅ <b>WALLET CREDITED BY ADMIN</b>\n\n` +
+      `💰 <b>Amount:</b> +${amount.toLocaleString()} ETB\n` +
+      `💳 <b>New Balance:</b> <b>${newBal.toLocaleString()} ETB</b>\n` +
+      `📝 <b>Note:</b> ${reason}`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (e) {}
+
+  return ctx.reply(`✅ Credited +${amount} ETB to user ${targetUserId}. New Balance: ${newBal} ETB`);
+});
+
+// 2. /debit <userId> <amount> [reason]
+bot.command('debit', async (ctx) => {
+  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin access only.');
+
+  const parts = ctx.message.text.trim().split(' ');
+  if (parts.length < 3) {
+    return ctx.reply('Usage:\n/debit <USER_ID> <AMOUNT> [Reason]\n\nExample:\n/debit 5056286354 500 Manual correction');
+  }
+
+  const targetUserId = parts[1];
+  const amount = parseInt(parts[2], 10);
+  const reason = parts.slice(3).join(' ') || 'Admin Manual Debit';
+
+  if (isNaN(amount) || amount <= 0) return ctx.reply('Amount must be a positive number.');
+
+  const newBal = await debitWallet(targetUserId, amount, reason, 'ADMIN_DEBIT');
+  if (newBal === null) {
+    const cur = await getUserBalance(targetUserId);
+    return ctx.reply(`❌ Cannot debit. User balance (${cur} ETB) is less than ${amount} ETB.`);
+  }
+
+  try {
+    await bot.telegram.sendMessage(
+      targetUserId,
+      `⚠️ <b>WALLET DEBITED BY ADMIN</b>\n\n` +
+      `💰 <b>Amount:</b> -${amount.toLocaleString()} ETB\n` +
+      `💳 <b>New Balance:</b> <b>${newBal.toLocaleString()} ETB</b>\n` +
+      `📝 <b>Note:</b> ${reason}`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (e) {}
+
+  return ctx.reply(`✅ Debited -${amount} ETB from user ${targetUserId}. New Balance: ${newBal} ETB`);
+});
+
+// 3. /checkwallet <userId>
+bot.command('checkwallet', async (ctx) => {
+  if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin access only.');
+
+  const parts = ctx.message.text.trim().split(' ');
+  if (parts.length < 2) return ctx.reply('Usage:\n/checkwallet <USER_ID>');
+
+  const targetUserId = parts[1];
+  const bal = await getUserBalance(targetUserId);
+  const orders = await getUserOrders(targetUserId);
+  const txs = await getWalletTransactions(targetUserId);
+
+  let replyText = `👤 <b>WALLET PROFILE (ID: ${targetUserId})</b>\n\n` +
+                  `💰 <b>Current Balance:</b> <b>${bal.toLocaleString()} ETB</b>\n` +
+                  `📦 <b>Total Orders:</b> ${orders.length}\n` +
+                  `📜 <b>Recent Transactions:</b> ${txs.length}\n\n`;
+
+  txs.slice(0, 5).forEach((t, i) => {
+    replyText += `${i + 1}. ${t.amount >= 0 ? '+' : ''}${t.amount} ETB (${t.description || t.type})\n`;
+  });
+
+  return ctx.reply(replyText, { parse_mode: 'HTML' });
+});
+
+// 4. /send <userId> [duration] <credentials>
+bot.command('send', async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Admin only.');
+
+    const messageText = ctx.message.text.trim();
+    const parts = messageText.split(' ');
+
+    if (parts.length < 3) {
+      return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nOr with days:\n/send <USER_ID> 30d <Credentials>');
+    }
+
+    const targetUserId = parts[1];
+    let customMessage = '';
+    let durationDays = null;
+
+    const possibleDuration = parts[2].toLowerCase();
+    if (/^\d+d$/.test(possibleDuration)) {
+      durationDays = parseInt(possibleDuration.replace('d', ''), 10);
+      customMessage = parts.slice(3).join(' ');
+    } else {
+      customMessage = parts.slice(2).join(' ');
+    }
+
+    if (!customMessage.trim()) return ctx.reply('Please provide credentials.');
+
+    const deliveryNotification = "✅ <b>Order Activated</b>\n\n" +
+                                 "Your order is now active.\n\n" +
+                                 "🔐 <b>Login Details</b>\n" +
+                                 `<code>${customMessage}</code>\n\n` +
+                                 "📂 <b>My Orders → 🔑 My Access</b>\n" +
+                                 "🔒 Keep your credentials secure.\n\n" +
+                                 "Need assistance?\n" +
+                                 "📩 @" + SUPPORT_USERNAME;
+
+    await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
+    await activateOrder(targetUserId, customMessage, durationDays);
+
+    ctx.reply(`✅ Order activated for User ID ${targetUserId}!${durationDays ? ` (Expires in ${durationDays} days)` : ''}`);
+  } catch (err) {
+    ctx.reply("Delivery error: " + err.message);
+  }
+});
+
+// ============================================================
+// 📦 ORDERS, PRICING, FAQ, REFERRAL & START
+// ============================================================
+
+bot.start(async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    const startPayload = ctx.message.text.split(' ')[1];
+    let refId = null;
+
+    if (startPayload && startPayload.startsWith('ref_')) {
+      refId = startPayload.replace('ref_', '');
+      if (refId !== String(userId)) {
+        try {
+          await bot.telegram.sendMessage(
+            refId,
+            "🎉 <b>New trader joined via your referral link!</b>\n\nUser: @" + (ctx.from.username || 'Trader') + "\nYou will receive a 100 ETB bonus upon their first purchase!",
+            { parse_mode: 'HTML' }
+          );
+        } catch (e) {}
+      }
+    }
+
+    await recordUser(userId, ctx.from.username, refId);
+
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, userId);
+    if (!allJoined) return sendJoinChannelMessage(ctx, missing);
+
+    return sendMainMenu(ctx);
+  } catch (err) {}
+});
+
+bot.action('VERIFY_JOIN', async (ctx) => {
+  try {
+    const { allJoined, missing } = await checkAllChannelMemberships(ctx, ctx.from.id);
+    if (allJoined) {
+      try { await ctx.deleteMessage(); } catch (e) {}
+      ctx.reply("🎉 <b>Verification Successful!</b> Thank you for joining our community.", { parse_mode: 'HTML' });
+      return sendMainMenu(ctx);
+    } else {
+      const remaining = missing.map(m => m.username).join(', ');
+      return ctx.answerCbQuery("❌ Please join all channels first! Remaining: " + remaining, { show_alert: true });
+    }
+  } catch (err) {}
+});
+
+// Pricing
 bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   ctx.reply(
     "💳 <b>Official Pricing Overview:</b>\n\n" +
@@ -892,7 +1465,7 @@ bot.action(['ACTION_PRICING', 'ACTION_PRICES'], (ctx) => {
   );
 });
 
-// 🎁 OFFERS
+// Offers
 bot.action('ACTION_OFFERS', (ctx) => {
   ctx.reply(
     "🎁 <b>Special Season Offers:</b>\n\n" +
@@ -909,7 +1482,7 @@ bot.action('ACTION_OFFERS', (ctx) => {
   );
 });
 
-// 🤝 REFERRAL
+// Referral
 bot.action('ACTION_REFERRAL', async (ctx) => {
   const userId = ctx.from.id;
   const botInfo = await ctx.telegram.getMe();
@@ -939,17 +1512,25 @@ bot.action('ACTION_REFERRAL', async (ctx) => {
   );
 });
 
-// ❓ FAQ
-bot.action('ACTION_FAQ', (ctx) => sendFAQMenu(ctx));
-bot.action('FAQ_DELIVERY', (ctx) => ctx.reply("⏱️ <b>How long does delivery take?</b>\n\nOrders are delivered within 5 to 15 minutes after uploading your payment screenshot.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
-bot.action('FAQ_PAYMENT', (ctx) => ctx.reply("💳 <b>How do I pay?</b>\n\nWe accept Telebirr (Mobile Money) and Binance Pay.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
-bot.action('FAQ_OFFICIAL', (ctx) => ctx.reply("🔒 <b>Is this an official subscription?</b>\n\nYes! 100% genuine guaranteed access.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
-bot.action('FAQ_CHANGE_ACC', (ctx) => ctx.reply("🔄 <b>Can I change my account?</b>\n\nYes, contact @" + SUPPORT_USERNAME + " after ordering.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
-bot.action('FAQ_EXPIRY', (ctx) => ctx.reply("⏰ <b>What happens when my subscription expires?</b>\n\nYou will receive a reminder before expiration.", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
-bot.action('FAQ_PROBLEM', (ctx) => ctx.reply("🛠️ <b>What if I have a problem?</b>\n\nContact support at @" + SUPPORT_USERNAME + " for fast assistance!", { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
-bot.action('FAQ_SUPPORT', (ctx) => ctx.reply("📞 <b>How do I contact support?</b>\n\nDirect Telegram: @" + SUPPORT_USERNAME, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Back To FAQ', 'ACTION_FAQ')]]) }));
+// FAQ
+bot.action('ACTION_FAQ', (ctx) => {
+  ctx.reply(
+    "❓ <b>FREQUENTLY ASKED QUESTIONS (FAQ)</b>\n\n" +
+    "• <b>How long does delivery take?</b>\n5 to 15 minutes after payment confirmation.\n\n" +
+    "• <b>How do I fund my wallet?</b>\nClick 💰 Wallet → ➕ Deposit Funds, choose an amount, and upload your payment receipt.\n\n" +
+    "• <b>Is this an official subscription?</b>\nYes, 100% genuine guaranteed access.\n\n" +
+    "• <b>How do I contact support?</b>\nDirect Telegram: @" + SUPPORT_USERNAME,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
+        [Markup.button.callback('🏠 Main Menu', 'ACTION_MAIN_MENU')]
+      ])
+    }
+  );
+});
 
-// 👥 7. MY ORDERS DASHBOARD
+// My Orders Dashboard
 bot.action('ACTION_MY_ORDERS', async (ctx) => {
   const userId = ctx.from.id;
   const orders = await getUserOrders(userId);
@@ -967,7 +1548,6 @@ bot.action('ACTION_MY_ORDERS', async (ctx) => {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📦 Active Orders', 'MY_ORDERS_ACTIVE')],
-        [Markup.button.callback('🕐 Order History', 'MY_ORDERS_HISTORY')],
         [Markup.button.callback('🔑 My Access', 'MY_ORDERS_KEYS')],
         [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
       ])
@@ -979,11 +1559,10 @@ bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   const userId = ctx.from.id;
   const orders = await getUserOrders(userId);
   const activeOrders = orders.filter(o => o.status === 'Active');
-  const pendingOrders = orders.filter(o => o.status === 'Pending');
 
-  if (activeOrders.length === 0 && pendingOrders.length === 0) {
+  if (activeOrders.length === 0) {
     return ctx.reply(
-      "📦 <b>Active Orders:</b>\n\nYou do not have any active or pending subscriptions right now.",
+      "📦 <b>Active Orders:</b>\n\nYou do not have any active subscriptions right now.",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
@@ -994,22 +1573,10 @@ bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
     );
   }
 
-  let responseText = "📦 <b>YOUR SUBSCRIPTIONS:</b>\n\n";
-  if (activeOrders.length > 0) {
-    responseText += "🟢 <b>ACTIVE SUBSCRIPTIONS:</b>\n";
-    activeOrders.forEach((ord, i) => {
-      responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟢 Active\n\n`;
-    });
-  }
-
-  if (pendingOrders.length > 0) {
-    responseText += "🟡 <b>PENDING VERIFICATION:</b>\n";
-    pendingOrders.forEach((ord, i) => {
-      responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟡 Awaiting Verification\n• Amount: ${ord.price || 'Paid'}\n\n`;
-    });
-  }
-
-  responseText += "Need assistance? Contact @" + SUPPORT_USERNAME;
+  let responseText = "🟢 <b>YOUR ACTIVE SUBSCRIPTIONS:</b>\n\n";
+  activeOrders.forEach((ord, i) => {
+    responseText += `<b>${i + 1}. ${ord.tool}</b>\n• Status: 🟢 Active\n• Method: ${ord.paymentMethod || 'Paid'}\n\n`;
+  });
 
   ctx.reply(responseText, {
     parse_mode: 'HTML',
@@ -1020,35 +1587,6 @@ bot.action('MY_ORDERS_ACTIVE', async (ctx) => {
   });
 });
 
-bot.action('MY_ORDERS_HISTORY', async (ctx) => {
-  const userId = ctx.from.id;
-  const orders = await getUserOrders(userId);
-
-  if (orders.length === 0) {
-    return ctx.reply(
-      "🕐 <b>Order History:</b>\n\nNo previous order records found under your account.",
-      {
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('📊 Trading Tools', 'ACTION_SHOP')],
-          [Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]
-        ])
-      }
-    );
-  }
-
-  let responseText = "🕐 <b>YOUR ORDER HISTORY:</b>\n\n";
-  orders.forEach((ord, idx) => {
-    const icon = ord.status === 'Active' ? '🟢' : (ord.status === 'Pending' ? '🟡' : (ord.status === 'Expired' ? '⏳' : '⚪'));
-    responseText += `#${idx + 1} - ${ord.tool} (${icon} ${ord.status})\n`;
-  });
-
-  ctx.reply(responseText, {
-    parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Back', 'ACTION_MY_ORDERS')]])
-  });
-});
-
 bot.action('MY_ORDERS_KEYS', async (ctx) => {
   const userId = ctx.from.id;
   const allOrders = await getUserOrders(userId);
@@ -1056,7 +1594,7 @@ bot.action('MY_ORDERS_KEYS', async (ctx) => {
 
   if (orders.length === 0) {
     return ctx.reply(
-      "🔑 <b>My Access:</b>\n\nNo active login credentials available. Once your order is approved, your access keys will appear here.",
+      "🔑 <b>My Access:</b>\n\nNo active login credentials available yet.",
       {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
@@ -1069,14 +1607,8 @@ bot.action('MY_ORDERS_KEYS', async (ctx) => {
 
   let responseText = "🔑 <b>YOUR DELIVERED ACCESS CREDENTIALS:</b>\n\n";
   orders.forEach((ord, idx) => {
-    responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n` +
-                    `<code>${ord.credentials}</code>\n\n`;
+    responseText += `<b>${idx + 1}. ${ord.tool}</b>:\n<code>${ord.credentials}</code>\n\n`;
   });
-
-  responseText += "📂 My Orders → 🔑 My Access\n" +
-                  "🔒 Keep your credentials secure.\n\n" +
-                  "Need assistance?\n" +
-                  "📩 @" + SUPPORT_USERNAME;
 
   ctx.reply(responseText, {
     parse_mode: 'HTML',
@@ -1089,178 +1621,45 @@ bot.action('MY_ORDERS_KEYS', async (ctx) => {
 
 bot.action('ACTION_MAIN_MENU', (ctx) => sendMainMenu(ctx));
 
-// 💳 Payment Details
-bot.action(/PAY_(.+)/, (ctx) => {
-  const method = ctx.match[1];
-  const session = userSessions[ctx.from.id] || { tool: 'Trading Tool', finalPrice: 750 };
-  session.method = method;
-
-  let payText = '';
-  if (method === 'TELEBIRR') {
-    payText = "📱 <b>Telebirr Payment Details</b>\n\n" +
-              "• Phone Number: <code>" + PAYMENT_INFO.telebirr.number + "</code> (Tap to copy)\n" +
-              "• Account Name: <code>" + PAYMENT_INFO.telebirr.name + "</code>\n" +
-              "• Amount: <code>" + (session.finalPrice || 750) + " ETB</code>\n\n" +
-              "⚠️ <b>Important:</b> After completing the payment, please send your transaction screenshot (receipt) right here in this chat.";
-  } else {
-    payText = "💎 <b>Binance Payment Details</b>\n\n" +
-              "• Binance Pay ID: <code>" + PAYMENT_INFO.binance.id + "</code> (Tap to copy)\n" +
-              "• Payee Name: <code>" + PAYMENT_INFO.binance.name + "</code>\n" +
-              "• Amount: <code>" + ((session.finalPrice || 750) / 100).toFixed(1) + " USDT</code>\n\n" +
-              "⚠️ <b>Important:</b> After sending via Binance Pay, please upload your transfer screenshot or TXID here.";
-  }
-
-  ctx.reply(payText, { parse_mode: 'HTML' });
-});
-
-// Customer Uploads Receipt Photo (ONLY in Private Chat)
-bot.on('photo', async (ctx) => {
-  try {
-    // Strict Guard: Never process channel or group posts
-    if (ctx.chat.type !== 'private') return;
-
-    const user = ctx.from;
-    const session = userSessions[user.id] || { tool: 'Trading Tool Access', finalPrice: 750, method: 'Direct', planTitle: 'Standard' };
-    const photo = ctx.message.photo.pop();
-
-    await addPendingOrder(user.id, user.username, session.tool, session.planTitle, session.finalPrice);
-
-    if (ADMIN_CHAT_ID) {
-      try {
-        const captionText = "🚨 <b>NEW PAYMENT RECEIPT RECEIVED!</b>\n\n" +
-                            "👤 Customer: @" + (user.username || 'NoUsername') + "\n" +
-                            "🆔 User ID: <code>" + user.id + "</code>\n" +
-                            "📦 Product: <b>" + session.tool + "</b>\n" +
-                            "💰 Amount: <b>" + (session.finalPrice || 750) + " ETB</b>\n" +
-                            "💳 Method: " + (session.method || 'Direct') + "\n\n" +
-                            "💡 Deliver credentials:\n" +
-                            "<code>/send " + user.id + " Email: ... | Pass: ...</code>\n\n" +
-                            "💡 Or with Auto-Expiry (e.g. 7d, 14d, 30d):\n" +
-                            "<code>/send " + user.id + " 14d Email: ... | Pass: ...</code>\n\n" +
-                            "💡 Update weekly account:\n" +
-                            "<code>/sendweek " + user.id + " 2 Email: ... | Pass: ...</code>\n\n" +
-                            "💡 To expire subscription anytime:\n" +
-                            "<code>/expire " + user.id + "</code>";
-
-        await bot.telegram.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
-          caption: captionText,
-          parse_mode: 'HTML',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback("Reject Receipt (" + user.id + ")", "REJECT_" + user.id)]
-          ])
-        });
-      } catch (err) {}
-    }
-
-    ctx.reply(
-      "⏳ <b>Receipt Received & Recorded!</b>\n\n" +
-      "Your order has been saved under <b>👥 My Orders</b> with status 🟡 <b>Pending Verification</b>.\n\n" +
-      "Our team is verifying the payment. Your login credentials will be delivered here within 5–15 minutes.",
-      { parse_mode: 'HTML' }
-    );
-  } catch (err) {}
-});
-
-// ✍️ Admin Deliver Credentials (/send <userId> [duration] <credentials>)
-bot.command('send', async (ctx) => {
-  try {
-    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) {
-      return ctx.reply('This command is restricted to the administrator only.');
-    }
-
-    const messageText = ctx.message.text.trim();
-    const parts = messageText.split(' ');
-
-    if (parts.length < 3) {
-      return ctx.reply('Usage format:\n/send <USER_ID> <Credentials>\n\nOr with days:\n/send <USER_ID> 14d <Credentials>');
-    }
-
-    const targetUserId = parts[1];
-    let customMessage = '';
-    let durationDays = null;
-
-    const possibleDuration = parts[2].toLowerCase();
-    if (/^\d+d$/.test(possibleDuration)) {
-      durationDays = parseInt(possibleDuration.replace('d', ''), 10);
-      customMessage = parts.slice(3).join(' ');
-    } else {
-      customMessage = parts.slice(2).join(' ');
-    }
-
-    if (!customMessage.trim()) {
-      return ctx.reply('Please provide the credentials message after the user ID.');
-    }
-
-    const deliveryNotification = "✅ <b>Order Activated</b>\n\n" +
-                                 "Your payment has been verified and your order is now active.\n\n" +
-                                 "🔐 <b>Login Details</b>\n" +
-                                 `<code>${customMessage}</code>\n\n` +
-                                 "📂 <b>My Orders → 🔑 My Access</b>\n" +
-                                 "🔒 Keep your credentials secure.\n\n" +
-                                 "Need assistance?\n" +
-                                 "📩 @" + SUPPORT_USERNAME;
-
-    await bot.telegram.sendMessage(targetUserId, deliveryNotification, { parse_mode: 'HTML' });
-    await activateOrder(targetUserId, customMessage, durationDays);
-
-    ctx.reply(`✅ Order activated and set to ACTIVE for Customer (ID: ${targetUserId})!${durationDays ? ` (Auto-expires in ${durationDays} days)` : ''}`);
-  } catch (err) {
-    ctx.reply("Delivery failed: " + err.message);
-  }
-});
-
-// 📢 Mass Broadcast Command (/broadcast <message>)
-bot.command('broadcast', async (ctx) => {
-  try {
-    if (String(ctx.from.id) !== String(ADMIN_CHAT_ID)) return ctx.reply('Administrator access required.');
-
-    const text = ctx.message.text.replace('/broadcast', '').trim();
-    if (!text) return ctx.reply('Please include text. Example:\n/broadcast Flash deal on Fxreplay Pro!');
-
-    let userList = [];
-    if (isMongoConnected && User) {
-      const users = await User.find({}, 'userId');
-      userList = users.map(u => u.userId);
-    } else {
-      userList = Array.from(fallbackDb.users);
-    }
-
-    ctx.reply("Sending broadcast to " + userList.length + " registered bot users...");
-    let successCount = 0;
-
-    for (const uid of userList) {
-      try {
-        await bot.telegram.sendMessage(uid, "📢 <b>Announcement from A T T S:</b>\n\n" + text, { parse_mode: 'HTML' });
-        successCount++;
-      } catch (e) {}
-    }
-
-    ctx.reply("Broadcast completed! Reached " + successCount + " traders.");
-  } catch (err) {}
-});
-
-// Reject Order Callback
+// Reject Direct Order
 bot.action(/REJECT_(\d+)/, async (ctx) => {
   const targetUserId = ctx.match[1];
   try {
-    await rejectPendingOrder(targetUserId);
     await bot.telegram.sendMessage(
       targetUserId,
-      "❌ <b>Payment Verification Unsuccessful</b>\n\nWe could not confirm the uploaded transaction receipt. Please ensure you sent the correct screenshot or contact support at @" + SUPPORT_USERNAME,
+      "❌ <b>Payment Verification Unsuccessful</b>\n\nWe could not verify the uploaded receipt. Please contact @" + SUPPORT_USERNAME,
       { parse_mode: 'HTML' }
     );
     ctx.editMessageCaption((ctx.update.callback_query.message.caption || '') + '\n\nSTATUS: REJECTED');
   } catch (err) {}
 });
 
-// 🚀 Startup Sequence
+// Diagnostic command
+bot.command('dbstatus', async (ctx) => {
+  if (isMongoConnected) {
+    const orderCount = await Order.countDocuments().catch(() => 0);
+    const userCount = await User.countDocuments().catch(() => 0);
+    const depCount = await Deposit.countDocuments().catch(() => 0);
+    return ctx.reply(
+      `🟢 <b>DATABASE STATUS: MONGODB CONNECTED!</b>\n\n` +
+      `👥 Users: ${userCount}\n` +
+      `📦 Orders: ${orderCount}\n` +
+      `💳 Deposits: ${depCount}`,
+      { parse_mode: 'HTML' }
+    );
+  } else {
+    return ctx.reply(`🔴 <b>DATABASE STATUS: TEMPORARY MEMORY</b>\n\n${mongoErrorDetails}`);
+  }
+});
+
+// Launch Bot
 async function startApplication() {
   await connectToMongo();
 
   try {
     await bot.telegram.deleteWebhook({ drop_pending_updates: false });
     await bot.launch();
-    console.log('🚀 A T T S Telegram Bot is LIVE and connected!');
+    console.log('🚀 A T T S Telegram Bot with Wallet is LIVE and running!');
   } catch (err) {
     console.error('Bot launch error, retrying in 5s...', err.message);
     setTimeout(startApplication, 5000);
