@@ -99,15 +99,10 @@ function getMainMenuKeyboard() {
   return Markup.inlineKeyboard([
     // Row 1: Explore Products (Full width, launches Mini App)
     [Markup.button.webApp('✦ Explore Products', MINI_APP_URL)],
-    // Row 2: Redeem Order | My Orders
+    // Row 2: Redeem Order | My Orders (Side by side)
     [
       Markup.button.callback('🔑 Redeem Order', 'ACTION_REDEEM'),
       Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')
-    ],
-    // Row 3: Refer & Earn | Support
-    [
-      Markup.button.callback('↗ Refer & Earn', 'ACTION_REFERRAL'),
-      Markup.button.url('◉ Support', `https://t.me/${ADMIN_USERNAME}`)
     ]
   ]);
 }
@@ -151,7 +146,7 @@ Please type and send your code in the chat:`;
   return ctx.reply(promptText, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
-      [Markup.button.callback('🔙 Main Menu', 'ACTION_MAIN_MENU')]
+      [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
     ])
   });
 });
@@ -187,35 +182,7 @@ bot.action('ACTION_ORDERS', async (ctx) => {
         Markup.button.callback('🔑 Redeem Order', 'ACTION_REDEEM'),
         Markup.button.webApp('✦ Explore Products', MINI_APP_URL)
       ],
-      [Markup.button.callback('🔙 Main Menu', 'ACTION_MAIN_MENU')]
-    ])
-  });
-});
-
-// ------------------------------------------------------------
-// ↗ REFER & EARN HANDLER
-// ------------------------------------------------------------
-bot.action('ACTION_REFERRAL', async (ctx) => {
-  const userId = String(ctx.from.id);
-  const botInfo = ctx.botInfo;
-  const botUsername = botInfo ? botInfo.username : 'AbyssiniaTradingHubBot';
-  const refLink = `https://t.me/${botUsername}?start=ref_${userId}`;
-
-  const refText = 
-`↗ <b>Refer & Earn (Partner Program)</b>
-
-Share your link with fellow traders. Earn 100 ETB for every verified tool subscription.
-
-🔗 <b>Your Partner Link:</b>
-<code>${refLink}</code>
-
-• Total Referrals: <b>4 traders</b>
-• Commission Earned: <b>400 ETB</b>`;
-
-  return ctx.reply(refText, {
-    parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback('🔙 Main Menu', 'ACTION_MAIN_MENU')]
+      [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
     ])
   });
 });
@@ -290,7 +257,7 @@ bot.on('text', async (ctx) => {
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🔄 Try Again', 'ACTION_REDEEM')],
             [Markup.button.url('◉ Support', `https://t.me/${ADMIN_USERNAME}`)],
-            [Markup.button.callback('🔙 Main Menu', 'ACTION_MAIN_MENU')]
+            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
           ])
         }
       );
@@ -305,7 +272,7 @@ bot.on('text', async (ctx) => {
           ...Markup.inlineKeyboard([
             [Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')],
             [Markup.button.url('◉ Support', `https://t.me/${ADMIN_USERNAME}`)],
-            [Markup.button.callback('🔙 Main Menu', 'ACTION_MAIN_MENU')]
+            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
           ])
         }
       );
@@ -367,7 +334,7 @@ ${credsSummary}
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')],
-        [Markup.button.callback('🔙 Main Menu', 'ACTION_MAIN_MENU')]
+        [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
       ])
     });
   }
