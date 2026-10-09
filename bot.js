@@ -21,7 +21,7 @@ const bot = new Telegraf(BOT_TOKEN);
 const userSessions = {};
 
 // ------------------------------------------------------------
-// 🗄️ IN-MEMORY DATABASE (Synced with MongoDB if configured)
+// 🗄️ IN-MEMORY DATABASE (Catalogue & Pre-configured codes)
 // ------------------------------------------------------------
 const activationCodes = {
   'ATH-VIP-8821': {
@@ -93,16 +93,13 @@ const customerOrders = {
 };
 
 // ------------------------------------------------------------
-// 📱 MAIN MENU KEYBOARD (TELEGRAM BUTTON STYLES)
-// ✦ Explore Products -> bg_primary (blue)
-// 🔑 Redeem Order    -> bg_success (green)
-// 📦 My Orders       -> bg_primary (blue)
+// 📱 MAIN MENU KEYBOARD (EXACT ATH SPECIFICATION)
 // ------------------------------------------------------------
 function getMainMenuKeyboard() {
   return Markup.inlineKeyboard([
-    // Row 1: Full-width Top Button (bg_primary blue)
+    // Row 1: Full-width top button launching the Mini App
     [Markup.button.webApp('✦ Explore Products', MINI_APP_URL)],
-    // Row 2: Side-by-Side [Redeem Order (bg_success green) | My Orders (bg_primary blue)]
+    // Row 2: Side-by-side management buttons
     [
       Markup.button.callback('🔑 Redeem Order', 'ACTION_REDEEM'),
       Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')
@@ -111,7 +108,7 @@ function getMainMenuKeyboard() {
 }
 
 // ------------------------------------------------------------
-// 🚀 /start & /menu HANDLER
+// 🚀 /start & /menu COMMANDS
 // ------------------------------------------------------------
 bot.command(['start', 'menu'], async (ctx) => {
   const userId = String(ctx.from.id);
@@ -130,7 +127,7 @@ Manage your subscriptions, redeem order activation codes, and get verified crede
 });
 
 // ------------------------------------------------------------
-// 🔑 REDEEM ORDER HANDLER
+// 🔑 REDEEM ORDER FLOW
 // ------------------------------------------------------------
 bot.action('ACTION_REDEEM', async (ctx) => {
   const userId = String(ctx.from.id);
@@ -155,7 +152,7 @@ Please type and send your code in the chat:`;
 });
 
 // ------------------------------------------------------------
-// 📦 MY ORDERS HANDLER
+// 📦 MY ORDERS FLOW
 // ------------------------------------------------------------
 bot.action('ACTION_ORDERS', async (ctx) => {
   const userId = String(ctx.from.id);
@@ -191,7 +188,7 @@ bot.action('ACTION_ORDERS', async (ctx) => {
 });
 
 // ------------------------------------------------------------
-// 🏠 MAIN MENU RETURN
+// ⬅️ BACK NAVIGATION
 // ------------------------------------------------------------
 bot.action('ACTION_MAIN_MENU', async (ctx) => {
   const userId = String(ctx.from.id);
@@ -281,8 +278,7 @@ bot.on('text', async (ctx) => {
       );
     }
 
-    // Case 3: Valid Code!
-    // Start subscription at the EXACT moment of redemption
+    // Case 3: Valid Code
     const now = new Date();
     const expiryDate = new Date(now.getTime() + record.durationDays * 24 * 60 * 60 * 1000);
 
@@ -291,7 +287,6 @@ bot.on('text', async (ctx) => {
     const activationTimeStr = formatDt(now);
     const expiryTimeStr = formatDt(expiryDate);
 
-    // Mark as redeemed
     record.isRedeemed = true;
     record.redeemedAt = activationTimeStr;
     record.expiresAt = expiryTimeStr;
@@ -306,7 +301,6 @@ bot.on('text', async (ctx) => {
       credsSummary = `• Key: <code>${record.credentials.licenseKey}</code>`;
     }
 
-    // Save to customer's order history
     if (!customerOrders[userId]) customerOrders[userId] = [];
     customerOrders[userId].unshift({
       id: record.orderId,
@@ -342,7 +336,7 @@ ${credsSummary}
     });
   }
 
-  // Fallback for regular text
+  // Fallback for general text
   return ctx.reply(
     `🤖 Please select an action below or tap <b>«🔑 Redeem Order»</b>:`,
     {
@@ -369,6 +363,6 @@ bot.launch()
   .then(() => console.log('🚀 ATH Telegram Bot launched successfully!'))
   .catch((err) => console.error('Failed to launch bot:', err));
 
-// Graceful stop
+// Graceful termination
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
