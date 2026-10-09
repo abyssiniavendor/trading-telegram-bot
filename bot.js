@@ -93,7 +93,7 @@ const customerOrders = {
 };
 
 // ------------------------------------------------------------
-// 📱 MAIN MENU KEYBOARDS (BOT API 9.4 STYLED INLINE KEYBOARDS)
+// 📱 MAIN MENU KEYBOARDS (BOT API 9.4 STYLED KEYBOARDS)
 // Official Styles: 'primary' (blue), 'success' (green), 'danger' (red)
 // ------------------------------------------------------------
 function getMainMenuInlineKeyboard() {
@@ -127,11 +127,33 @@ function getMainMenuInlineKeyboard() {
 }
 
 // ------------------------------------------------------------
+// 🧹 PERSISTENT KEYBOARD REMOVAL HELPER
+// Dismisses any legacy persistent bottom reply keyboard cached in the user's Telegram client
+// ------------------------------------------------------------
+async function dismissPersistentReplyKeyboard(ctx) {
+  if (ctx.message && ctx.chat) {
+    try {
+      const ping = await ctx.reply('⚡', {
+        reply_markup: { remove_keyboard: true }
+      });
+      setTimeout(() => {
+        ctx.deleteMessage(ping.message_id).catch(() => {});
+      }, 100);
+    } catch (err) {
+      // Graceful fallback
+    }
+  }
+}
+
+// ------------------------------------------------------------
 // 🚀 /start & /menu HANDLER
 // ------------------------------------------------------------
 async function handleMainMenu(ctx) {
   const userId = String(ctx.from.id);
   userSessions[userId] = { awaitingCode: false };
+
+  // Dismiss any persistent bottom reply keyboard so only inline buttons remain
+  await dismissPersistentReplyKeyboard(ctx);
 
   const welcomeText = 
 `👋 <b>Welcome to Abyssinia Trading Hub (ATH)</b>
@@ -156,6 +178,8 @@ bot.hears(['⬅️ Back', 'Back', '🔙 Main Menu', '/menu'], handleMainMenu);
 async function handleRedeemOrder(ctx) {
   const userId = String(ctx.from.id);
   userSessions[userId] = { awaitingCode: true };
+
+  await dismissPersistentReplyKeyboard(ctx);
 
   const promptText = 
 `🔑 <b>Redeem Order</b>
@@ -184,6 +208,8 @@ bot.hears(['🔑 Redeem Order', 'Redeem Order'], handleRedeemOrder);
 async function handleMyOrders(ctx) {
   const userId = String(ctx.from.id);
   userSessions[userId] = { awaitingCode: false };
+
+  await dismissPersistentReplyKeyboard(ctx);
 
   const orders = customerOrders[userId] || [];
 
@@ -224,7 +250,9 @@ async function handleExploreProducts(ctx) {
   const userId = String(ctx.from.id);
   userSessions[userId] = { awaitingCode: false };
 
-  const storeText = 
+  await dismissPersistentReplyKeyboard(ctx);
+
+  const storeText =
 `✦ <b>ATH Trading Tools Store</b>
 
 Explore premium trading tools, subscriptions, and licenses at exclusive Ethiopian rates:
@@ -290,108 +318,115 @@ bot.on('text', async (ctx) => {
   // Admin dispatch command: /send <USER_ID> <Credentials>
   if (rawText.startsWith('/send')) {
     if (String(userId) !== String(ADMIN_CHAT_ID)) {
-      return ctx.reply('⛔ Unauthorized: Admin access required.');
+      return ctx.reply('⚠️ Unauthorized: This command is restricted to administrators.');
     }
+
     const parts = rawText.split(' ');
-    if (parts.length >= 3) {
-      const targetUserId = parts[1];
-      const creds = parts.slice(2).join(' ');
-      try {
-        await bot.telegram.sendMessage(
-          targetUserId,
-          `📦 <b>Manual Order Delivery from Admin</b>\n\n${creds}\n\n<i>Contact support @${ADMIN_USERNAME} if you have any questions.</i>`,
-          { parse_mode: 'HTML' }
-        );
-        return ctx.reply(`✅ Delivered credentials to user <code>${targetUserId}</code>.`, { parse_mode: 'HTML' });
-      } catch (err) {
-        return ctx.reply(`❌ Failed to send: ${err.message}`);
-      }
+    if (parts.length < 3) {
+      return ctx.reply('Usage: /send <USER_ID> <Credentials>\nExample: /send 5056286354 Email: ... | Pass: ...');
     }
-    return ctx.reply('Usage: <code>/send &lt;USER_ID&gt; &lt;Credentials&gt;</code>', { parse_mode: 'HTML' });
+
+    const targetUserId = parts[1];
+    const payload = parts.slice(2).join(' ');
+
+    try {
+      await bot.telegram.sendMessage(
+        targetUserId,
+        `✅ <b>Order Access Delivered!</b>\n\nYour subscription credentials:\n<code>${payload}</code>\n\nStatus: 🟢 Active`,
+        { parse_mode: 'HTML' }
+      );
+      return ctx.reply(`✅ Successfully delivered credentials to User [${targetUserId}].`);
+    } catch (err) {
+      return ctx.reply(`❌ Delivery failed: ${err.message}`);
+    }
   }
 
-  // Quick command redirects
-  const lower = rawText.toLowerCase();
-  if (lower === '/redeem') return handleRedeemOrder(ctx);
-  if (lower === '/orders') return handleMyOrders(ctx);
-  if (lower === '/explore') return handleExploreProducts(ctx);
+  // Check if entering activation code or /redeem
+  const isAwaiting = userSessions[userId] && userSessions[userId].awaitingCode;
+  const isRedeemCommand = rawText.toLowerCase().startsWith('/redeem');
+  const isAthCodePattern = /^ATH-[A-Z0-9]+-[A-Z0-9]+/i.test(rawText);
 
-  // Activation code redemption check
-  const session = userSessions[userId] || {};
-  const isExplicitRedeemCmd = lower.startsWith('/redeem ');
-  const looksLikeCode = rawText.toUpperCase().startsWith('ATH-');
-
-  if (session.awaitingCode || isExplicitRedeemCmd || looksLikeCode) {
-    const code = rawText.replace(/^\/redeem\s+/i, '').trim().toUpperCase();
+  if (isAwaiting || isRedeemCommand || isAthCodePattern) {
+    const code = rawText.replace(/^\/redeem\s*/i, '').trim().toUpperCase();
     const record = activationCodes[code];
 
+    // Case 1: Invalid Code
     if (!record) {
       return ctx.reply(
-        `❌ <b>Invalid Activation Code</b>\n\nThe code <code>${code}</code> could not be found.\n\nPlease check the code provided upon order approval and try again.`,
+        `❌ <b>Invalid Activation Code</b>\n\nThe code «${code}» could not be verified in our records.\n\nPlease check the code received after your order approval and try again.`,
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🔄 Try Again', 'ACTION_REDEEM')],
+            [Markup.button.url('◉ Support', `https://t.me/${ADMIN_USERNAME}`)],
             [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
           ])
         }
       );
     }
 
+    // Case 2: Already Redeemed
     if (record.isRedeemed) {
       return ctx.reply(
-        `⚠️ <b>Code Already Redeemed</b>\n\nThis activation code was already claimed on <b>${record.redeemedAt}</b>.\n\nEach code can only be used once. Check active tools in «📦 My Orders».`,
+        `⚠️ <b>Code Already Redeemed</b>\n\nThis activation code «${code}» has already been redeemed and linked to an account on ${record.redeemedAt || 'a previous session'}.\n\nEach code can only be activated once. Check your active subscriptions in My Orders.`,
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')],
+            [Markup.button.url('◉ Support', `https://t.me/${ADMIN_USERNAME}`)],
             [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
           ])
         }
       );
     }
 
-    // Activate the code
+    // Case 3: Valid Code!
     const now = new Date();
-    const expiry = new Date(now.getTime() + record.durationDays * 24 * 60 * 60 * 1000);
-    const dateOpts = { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+    const expiryDate = new Date(now.getTime() + record.durationDays * 24 * 60 * 60 * 1000);
 
+    const formatDt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const activationTimeStr = formatDt(now);
+    const expiryTimeStr = formatDt(expiryDate);
+
+    // Mark as redeemed
     record.isRedeemed = true;
-    record.redeemedAt = now.toLocaleDateString('en-US', dateOpts);
+    record.redeemedAt = activationTimeStr;
+    record.expiresAt = expiryTimeStr;
     record.redeemedByUserId = userId;
 
-    if (!customerOrders[userId]) customerOrders[userId] = [];
-
     let credsSummary = '';
-    if (record.credentials.type === 'Account') {
-      credsSummary = `• <b>Login:</b> <code>${record.credentials.login}</code>\n• <b>Password:</b> <code>${record.credentials.password}</code>\n• <b>Guide:</b> ${record.credentials.instructions}`;
-    } else if (record.credentials.type === 'InviteLink') {
-      credsSummary = `• <b>Private Invite:</b> <a href="${record.credentials.inviteLink}">Join VIP Signals</a>\n• <b>Guide:</b> ${record.credentials.instructions}`;
+    if (record.credentials.type === 'InviteLink') {
+      credsSummary = `• Invite Link: ${record.credentials.inviteLink}\n• Token: ${record.credentials.licenseKey || code}`;
+    } else if (record.credentials.type === 'Account') {
+      credsSummary = `• Login: <code>${record.credentials.login}</code>\n• Pass: <code>${record.credentials.password}</code>`;
     } else {
-      credsSummary = `• <b>License Key:</b> <code>${record.credentials.licenseKey}</code>\n• <b>Guide:</b> ${record.credentials.instructions}`;
+      credsSummary = `• Key: <code>${record.credentials.licenseKey}</code>`;
     }
 
-    customerOrders[userId].push({
+    // Save to customer's order history
+    if (!customerOrders[userId]) customerOrders[userId] = [];
+    customerOrders[userId].unshift({
       id: record.orderId,
       productName: record.productName,
       status: 'Active',
-      activatedAt: record.redeemedAt,
-      expiresAt: expiry.toLocaleDateString('en-US', dateOpts),
-      credentials: credsSummary.replace(/<[^>]+>/g, '')
+      activatedAt: activationTimeStr,
+      expiresAt: expiryTimeStr,
+      credentials: record.credentials.login ? `${record.credentials.login} | ${record.credentials.password}` : (record.credentials.inviteLink || record.credentials.licenseKey)
     });
 
     userSessions[userId] = { awaitingCode: false };
 
     const successMessage = 
-`✅ <b>Order Activated Successfully!</b>
+`✅ <b>Order Activated</b>
 
 <b>Product:</b> ${record.productName}
-<b>Order ID:</b> <code>${record.orderId}</code>
-<b>Activated:</b> ${record.redeemedAt}
-<b>Expiry:</b> ${expiry.toLocaleDateString('en-US', dateOpts)} (${record.durationDays} Days)
+<b>Order ID:</b> ${record.orderId}
+<b>Activation Time:</b> ${activationTimeStr}
+<b>Expiry Date:</b> ${expiryTimeStr} (${record.durationDays} Days)
 <b>Status:</b> 🟢 Active Access Granted
 
-<b>Your Credentials:</b>
+<b>Access Information:</b>
 ${credsSummary}
 
 <i>Your subscription has officially started from this exact redemption moment.</i>`;
