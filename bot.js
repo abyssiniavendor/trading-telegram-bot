@@ -1,6 +1,6 @@
 // ============================================================
 // 🤖 ATH - ABYSSINIA TRADING HUB BOT (Node.js & Telegraf)
-// Production Backend for Render Deployment & GitHub Sync
+// Production Backend with Native Bot API 9.4 Button Styles
 // ============================================================
 
 require('dotenv').config();
@@ -93,24 +93,71 @@ const customerOrders = {
 };
 
 // ------------------------------------------------------------
-// 📱 MAIN MENU KEYBOARD (EXACT ATH SPECIFICATION)
+// 📱 MAIN MENU KEYBOARDS (BOT API 9.4 NATIVE BUTTON STYLES)
+// Styles: 'primary' (blue), 'success' (green), 'danger' (red)
 // ------------------------------------------------------------
-function getMainMenuKeyboard() {
-  return Markup.inlineKeyboard([
-    // Row 1: Full-width top button launching the Mini App
-    [Markup.button.webApp('✦ Explore Products', MINI_APP_URL)],
-    // Row 2: Side-by-side management buttons
-    [
-      Markup.button.callback('🔑 Redeem Order', 'ACTION_REDEEM'),
-      Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')
-    ]
-  ]);
+function getMainMenuReplyKeyboard() {
+  return {
+    reply_markup: {
+      keyboard: [
+        // Row 1: Full-width blue primary action launching Mini App
+        [
+          { 
+            text: '✦ Explore Products', 
+            web_app: { url: MINI_APP_URL }, 
+            style: 'primary' 
+          }
+        ],
+        // Row 2: Side-by-side: Redeem Order (green) | My Orders (blue)
+        [
+          { 
+            text: '🔑 Redeem Order', 
+            style: 'success' 
+          },
+          { 
+            text: '📦 My Orders', 
+            style: 'primary' 
+          }
+        ]
+      ],
+      resize_keyboard: true,
+      is_persistent: true
+    }
+  };
+}
+
+function getMainMenuInlineKeyboard() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { 
+            text: '✦ Explore Products', 
+            web_app: { url: MINI_APP_URL }, 
+            style: 'primary' 
+          }
+        ],
+        [
+          { 
+            text: '🔑 Redeem Order', 
+            callback_data: 'ACTION_REDEEM', 
+            style: 'success' 
+          },
+          { 
+            text: '📦 My Orders', 
+            callback_data: 'ACTION_ORDERS', 
+            style: 'primary' 
+          }
+        ]
+      ]
+    }
+  };
 }
 
 // ------------------------------------------------------------
 // 🚀 /start & /menu COMMANDS
 // ------------------------------------------------------------
-bot.command(['start', 'menu'], async (ctx) => {
+async function handleMainMenu(ctx) {
   const userId = String(ctx.from.id);
   userSessions[userId] = { awaitingCode: false };
 
@@ -122,14 +169,18 @@ Manage your subscriptions, redeem order activation codes, and get verified crede
 
   return ctx.reply(welcomeText, {
     parse_mode: 'HTML',
-    ...getMainMenuKeyboard()
+    ...getMainMenuReplyKeyboard()
   });
-});
+}
+
+bot.command(['start', 'menu'], handleMainMenu);
+bot.action('ACTION_MAIN_MENU', handleMainMenu);
+bot.hears(['⬅️ Back', 'Back', '🔙 Main Menu', '/menu'], handleMainMenu);
 
 // ------------------------------------------------------------
-// 🔑 REDEEM ORDER FLOW
+// 🔑 REDEEM ORDER HANDLER (REPLY BUTTON & INLINE BUTTON)
 // ------------------------------------------------------------
-bot.action('ACTION_REDEEM', async (ctx) => {
+async function handleRedeemOrder(ctx) {
   const userId = String(ctx.from.id);
   userSessions[userId] = { awaitingCode: true };
 
@@ -146,15 +197,18 @@ Please type and send your code in the chat:`;
   return ctx.reply(promptText, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
-      [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
+      [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
     ])
   });
-});
+}
+
+bot.action('ACTION_REDEEM', handleRedeemOrder);
+bot.hears(['🔑 Redeem Order', 'Redeem Order'], handleRedeemOrder);
 
 // ------------------------------------------------------------
-// 📦 MY ORDERS FLOW
+// 📦 MY ORDERS HANDLER (REPLY BUTTON & INLINE BUTTON)
 // ------------------------------------------------------------
-bot.action('ACTION_ORDERS', async (ctx) => {
+async function handleMyOrders(ctx) {
   const userId = String(ctx.from.id);
   userSessions[userId] = { awaitingCode: false };
 
@@ -179,30 +233,42 @@ bot.action('ACTION_ORDERS', async (ctx) => {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
       [
-        Markup.button.callback('🔑 Redeem Order', 'ACTION_REDEEM'),
-        Markup.button.webApp('✦ Explore Products', MINI_APP_URL)
+        { text: '🔑 Redeem Order', callback_data: 'ACTION_REDEEM', style: 'success' },
+        { text: '✦ Explore Products', web_app: { url: MINI_APP_URL }, style: 'primary' }
       ],
-      [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
+      [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
     ])
   });
-});
+}
+
+bot.action('ACTION_ORDERS', handleMyOrders);
+bot.hears(['📦 My Orders', 'My Orders'], handleMyOrders);
 
 // ------------------------------------------------------------
-// ⬅️ BACK NAVIGATION
+// ↗ REFER & EARN HANDLER
 // ------------------------------------------------------------
-bot.action('ACTION_MAIN_MENU', async (ctx) => {
+bot.action('ACTION_REFERRAL', async (ctx) => {
   const userId = String(ctx.from.id);
-  userSessions[userId] = { awaitingCode: false };
+  const botInfo = ctx.botInfo;
+  const botUsername = botInfo ? botInfo.username : 'AbyssiniaTradingHubBot';
+  const refLink = `https://t.me/${botUsername}?start=ref_${userId}`;
 
-  const menuText = 
-`👋 <b>Welcome to Abyssinia Trading Hub (ATH)</b>
-Order & Access Assistant
+  const refText = 
+`↗ <b>Refer & Earn (Partner Program)</b>
 
-Manage your subscriptions, redeem order activation codes, and get verified credentials.`;
+Share your link with fellow traders. Earn 100 ETB for every verified tool subscription.
 
-  return ctx.reply(menuText, {
+🔗 <b>Your Partner Link:</b>
+<code>${refLink}</code>
+
+• Total Referrals: <b>4 traders</b>
+• Commission Earned: <b>400 ETB</b>`;
+
+  return ctx.reply(refText, {
     parse_mode: 'HTML',
-    ...getMainMenuKeyboard()
+    ...Markup.inlineKeyboard([
+      [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
+    ])
   });
 });
 
@@ -255,9 +321,9 @@ bot.on('text', async (ctx) => {
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('🔄 Try Again', 'ACTION_REDEEM')],
-            [Markup.button.url('◉ Support', `https://t.me/${ADMIN_USERNAME}`)],
-            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
+            [{ text: '🔄 Try Again', callback_data: 'ACTION_REDEEM' }],
+            [{ text: '◉ Support', url: `https://t.me/${ADMIN_USERNAME}` }],
+            [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
           ])
         }
       );
@@ -270,9 +336,9 @@ bot.on('text', async (ctx) => {
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')],
-            [Markup.button.url('◉ Support', `https://t.me/${ADMIN_USERNAME}`)],
-            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
+            [{ text: '📦 My Orders', callback_data: 'ACTION_ORDERS', style: 'primary' }],
+            [{ text: '◉ Support', url: `https://t.me/${ADMIN_USERNAME}` }],
+            [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
           ])
         }
       );
@@ -330,18 +396,18 @@ ${credsSummary}
     return ctx.reply(successMessage, {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')],
-        [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
+        [{ text: '📦 My Orders', callback_data: 'ACTION_ORDERS', style: 'primary' }],
+        [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
       ])
     });
   }
 
-  // Fallback for general text
+  // Fallback for regular text
   return ctx.reply(
     `🤖 Please select an action below or tap <b>«🔑 Redeem Order»</b>:`,
     {
       parse_mode: 'HTML',
-      ...getMainMenuKeyboard()
+      ...getMainMenuReplyKeyboard()
     }
   );
 });
@@ -363,6 +429,6 @@ bot.launch()
   .then(() => console.log('🚀 ATH Telegram Bot launched successfully!'))
   .catch((err) => console.error('Failed to launch bot:', err));
 
-// Graceful termination
+// Graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
