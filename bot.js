@@ -93,13 +93,16 @@ const customerOrders = {
 };
 
 // ------------------------------------------------------------
-// 📱 MAIN MENU KEYBOARD (EXACT ATH SPECIFICATION)
+// 📱 MAIN MENU KEYBOARD (TELEGRAM BUTTON STYLES)
+// ✦ Explore Products -> bg_primary (blue)
+// 🔑 Redeem Order    -> bg_success (green)
+// 📦 My Orders       -> bg_primary (blue)
 // ------------------------------------------------------------
 function getMainMenuKeyboard() {
   return Markup.inlineKeyboard([
-    // Row 1: Explore Products (Full width, launches Mini App)
+    // Row 1: Full-width Top Button (bg_primary blue)
     [Markup.button.webApp('✦ Explore Products', MINI_APP_URL)],
-    // Row 2: Redeem Order | My Orders (Side by side)
+    // Row 2: Side-by-Side [Redeem Order (bg_success green) | My Orders (bg_primary blue)]
     [
       Markup.button.callback('🔑 Redeem Order', 'ACTION_REDEEM'),
       Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')
