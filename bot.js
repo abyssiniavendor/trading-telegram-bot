@@ -1,6 +1,6 @@
 // ============================================================
-// 🤖 ATH - ABYSSINIA TRADING HUB BOT (Node.js & Telegraf)
-// Production Backend with Native Bot API 9.4 Button Styles
+// 🤖 ABYSSINIA TRADING HUB (ATH) - TELEGRAM BOT
+// Order & Access Assistant with Bot API Button Styles
 // ============================================================
 
 require('dotenv').config();
@@ -8,73 +8,73 @@ const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
 
 // Configuration
-const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN";
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "583928172";
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "abyssiniavendor";
-const MINI_APP_URL = process.env.MINI_APP_URL || "https://attspro.vercel.app/";
-const PORT = process.env.PORT || 3000;
+const BOT_TOKEN = process.env.BOT_TOKEN || 'YOUR_BOT_TOKEN_HERE';
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || '5056286354';
+const PORT = process.env.PORT || 10000;
+const MINI_APP_URL = process.env.MINI_APP_URL || 'https://ais-dev-b7hbz5ntkwzelblv3umf6j-158744423774.europe-west1.run.app';
 
-// Initialize Telegraf Bot
+if (!BOT_TOKEN || BOT_TOKEN === 'YOUR_BOT_TOKEN_HERE') {
+  console.warn('⚠️ Warning: BOT_TOKEN is not set. Please provide a valid Telegram Bot token in environment variables.');
+}
+
 const bot = new Telegraf(BOT_TOKEN);
 
-// User session state tracking
+// User in-memory session store
 const userSessions = {};
 
-// ------------------------------------------------------------
-// 🗄️ IN-MEMORY DATABASE (Catalogue & Pre-configured codes)
-// ------------------------------------------------------------
+// Order & Credential Database
 const activationCodes = {
   'ATH-VIP-8821': {
     code: 'ATH-VIP-8821',
     orderId: '#ATH-8821',
-    productName: 'VIP Forex Signals (Monthly)',
-    durationDays: 30,
+    productName: 'VIP Forex & Crypto Signals',
+    plan: 'Quarterly (3 Months)',
+    durationDays: 90,
     isRedeemed: false,
     credentials: {
-      type: 'InviteLink',
-      inviteLink: 'https://t.me/+AbyssiniaVIP_PrivateChannel',
-      licenseKey: 'ATH-VIP-8821-ACT',
-      instructions: 'Tap the private invite link to enter the VIP Signals channel.'
+      inviteLink: 'https://t.me/+ATH_VIP_SIGNAL_ACCESS_99',
+      licenseKey: 'ATH-VIP-SIG-2026-X88',
+      instructions: 'Join the private channel using your unique single-use link above.'
     }
   },
   'ATH-FXR-4910': {
     code: 'ATH-FXR-4910',
     orderId: '#ATH-4910',
     productName: 'FX Replay Pro (Monthly)',
+    plan: 'Monthly Plan',
     durationDays: 30,
     isRedeemed: false,
     credentials: {
-      type: 'Account',
       login: 'fxreplay.trader99@gmail.com',
       password: 'FxReplay#Ethio2026',
-      instructions: 'Log in on app.fxreplay.com across desktop or mobile.'
+      instructions: 'Log in on app.fxreplay.com. Do not change account password to maintain warranty.'
     }
   },
   'ATH-TVP-2045': {
     code: 'ATH-TVP-2045',
     orderId: '#ATH-2045',
     productName: 'TradingView Premium (Annual)',
+    plan: 'Annual Tier',
     durationDays: 365,
     isRedeemed: false,
     credentials: {
-      type: 'Account',
       login: 'tv.premium.ath@gmail.com',
       password: 'TV#AbyssiniaGold26',
-      instructions: 'Log in directly on TradingView.com.'
+      instructions: 'Log in on TradingView.com across desktop and mobile devices.'
     }
   },
   'ATH-USED-7711': {
     code: 'ATH-USED-7711',
     orderId: '#ATH-7711',
     productName: 'Gold Scalper EA Robot (Lifetime)',
+    plan: 'Lifetime License',
     durationDays: 3650,
     isRedeemed: true,
     redeemedAt: 'Oct 2, 2026, 11:20 AM',
     redeemedByUserId: '5056286354',
     credentials: {
-      type: 'License',
       licenseKey: 'ATH-GOLD-EA-7711-CLAIMED',
-      instructions: 'Already activated on MT5 Account.'
+      instructions: 'Already activated on MT5 Account #994821.'
     }
   }
 };
@@ -93,18 +93,16 @@ const customerOrders = {
 };
 
 // ------------------------------------------------------------
-// 📱 MAIN MENU KEYBOARDS (BOT API 9.4 NATIVE BUTTON STYLES)
-// Styles: 'primary' (blue), 'success' (green), 'danger' (red)
+// 📱 MAIN MENU KEYBOARDS (STANDARD REPLY KEYBOARD WITH STYLES)
 // ------------------------------------------------------------
 function getMainMenuReplyKeyboard() {
   return {
     reply_markup: {
       keyboard: [
-        // Row 1: Full-width blue primary action launching Mini App
+        // Row 1: Full-width primary blue button
         [
           { 
             text: '✦ Explore Products', 
-            web_app: { url: MINI_APP_URL }, 
             style: 'primary' 
           }
         ],
@@ -126,36 +124,8 @@ function getMainMenuReplyKeyboard() {
   };
 }
 
-function getMainMenuInlineKeyboard() {
-  return {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { 
-            text: '✦ Explore Products', 
-            web_app: { url: MINI_APP_URL }, 
-            style: 'primary' 
-          }
-        ],
-        [
-          { 
-            text: '🔑 Redeem Order', 
-            callback_data: 'ACTION_REDEEM', 
-            style: 'success' 
-          },
-          { 
-            text: '📦 My Orders', 
-            callback_data: 'ACTION_ORDERS', 
-            style: 'primary' 
-          }
-        ]
-      ]
-    }
-  };
-}
-
 // ------------------------------------------------------------
-// 🚀 /start & /menu COMMANDS
+// 🚀 /start & /menu HANDLER
 // ------------------------------------------------------------
 async function handleMainMenu(ctx) {
   const userId = String(ctx.from.id);
@@ -178,7 +148,7 @@ bot.action('ACTION_MAIN_MENU', handleMainMenu);
 bot.hears(['⬅️ Back', 'Back', '🔙 Main Menu', '/menu'], handleMainMenu);
 
 // ------------------------------------------------------------
-// 🔑 REDEEM ORDER HANDLER (REPLY BUTTON & INLINE BUTTON)
+// 🔑 REDEEM ORDER HANDLER
 // ------------------------------------------------------------
 async function handleRedeemOrder(ctx) {
   const userId = String(ctx.from.id);
@@ -197,7 +167,7 @@ Please type and send your code in the chat:`;
   return ctx.reply(promptText, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
-      [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
+      [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
     ])
   });
 }
@@ -206,7 +176,7 @@ bot.action('ACTION_REDEEM', handleRedeemOrder);
 bot.hears(['🔑 Redeem Order', 'Redeem Order'], handleRedeemOrder);
 
 // ------------------------------------------------------------
-// 📦 MY ORDERS HANDLER (REPLY BUTTON & INLINE BUTTON)
+// 📦 MY ORDERS HANDLER
 // ------------------------------------------------------------
 async function handleMyOrders(ctx) {
   const userId = String(ctx.from.id);
@@ -234,7 +204,7 @@ async function handleMyOrders(ctx) {
     ...Markup.inlineKeyboard([
       [
         { text: '🔑 Redeem Order', callback_data: 'ACTION_REDEEM', style: 'success' },
-        { text: '✦ Explore Products', web_app: { url: MINI_APP_URL }, style: 'primary' }
+        { text: '✦ Explore Products', callback_data: 'ACTION_EXPLORE', style: 'primary' }
       ],
       [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
     ])
@@ -245,32 +215,39 @@ bot.action('ACTION_ORDERS', handleMyOrders);
 bot.hears(['📦 My Orders', 'My Orders'], handleMyOrders);
 
 // ------------------------------------------------------------
-// ↗ REFER & EARN HANDLER
+// ✦ EXPLORE PRODUCTS HANDLER
 // ------------------------------------------------------------
-bot.action('ACTION_REFERRAL', async (ctx) => {
+async function handleExploreProducts(ctx) {
   const userId = String(ctx.from.id);
-  const botInfo = ctx.botInfo;
-  const botUsername = botInfo ? botInfo.username : 'AbyssiniaTradingHubBot';
-  const refLink = `https://t.me/${botUsername}?start=ref_${userId}`;
+  userSessions[userId] = { awaitingCode: false };
 
-  const refText = 
-`↗ <b>Refer & Earn (Partner Program)</b>
+  const storeText =
+`✦ <b>ATH Trading Tools Store</b>
 
-Share your link with fellow traders. Earn 100 ETB for every verified tool subscription.
+Explore premium trading tools, subscriptions, and licenses at exclusive Ethiopian rates:
 
-🔗 <b>Your Partner Link:</b>
-<code>${refLink}</code>
+• <b>TradingView Premium & Essential</b>
+• <b>FX Replay Pro</b> (ICT / SMC backtesting)
+• <b>Gold Scalper EA Robots</b>
+• <b>VIP Forex & Crypto Signals</b>
 
-• Total Referrals: <b>4 traders</b>
-• Commission Earned: <b>400 ETB</b>`;
+Open the storefront below or redeem an active order:`;
 
-  return ctx.reply(refText, {
+  return ctx.reply(storeText, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
+      [{ text: '🌐 Launch ATH Store', web_app: { url: MINI_APP_URL }, style: 'primary' }],
+      [
+        { text: '🔑 Redeem Order', callback_data: 'ACTION_REDEEM', style: 'success' },
+        { text: '📦 My Orders', callback_data: 'ACTION_ORDERS', style: 'primary' }
+      ],
       [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
     ])
   });
-});
+}
+
+bot.action('ACTION_EXPLORE', handleExploreProducts);
+bot.hears(['✦ Explore Products', 'Explore Products'], handleExploreProducts);
 
 // ------------------------------------------------------------
 // 💬 TEXT MESSAGE LISTENER (CODE VALIDATION & REDEMPTION)
@@ -296,75 +273,66 @@ bot.on('text', async (ctx) => {
     try {
       await bot.telegram.sendMessage(
         targetUserId,
-        `✅ <b>Order Access Delivered!</b>\n\nYour subscription credentials:\n<code>${payload}</code>\n\nStatus: 🟢 Active`,
+        `🔔 <b>Order Credentials Delivery</b>\n\nAdministrator has provisioned your access:\n\n<code>${payload}</code>\n\nThank you for choosing Abyssinia Trading Hub!`,
         { parse_mode: 'HTML' }
       );
-      return ctx.reply(`✅ Successfully delivered credentials to User [${targetUserId}].`);
-    } catch (err) {
-      return ctx.reply(`❌ Delivery failed: ${err.message}`);
+      return ctx.reply(`✅ Delivered successfully to User ID <code>${targetUserId}</code>.`, { parse_mode: 'HTML' });
+    } catch (e) {
+      return ctx.reply(`❌ Failed to send message to user ${targetUserId}: ${e.message}`);
     }
   }
 
-  // Check if entering activation code or /redeem
-  const isAwaiting = userSessions[userId] && userSessions[userId].awaitingCode;
-  const isRedeemCommand = rawText.toLowerCase().startsWith('/redeem');
-  const isAthCodePattern = /^ATH-[A-Z0-9]+-[A-Z0-9]+/i.test(rawText);
+  const session = userSessions[userId] || {};
+  const isAwaiting = session.awaitingCode;
+  const isCodeFormat = /^ATH-[A-Z0-9]+-[A-Z0-9]+$/i.test(rawText) || rawText.toLowerCase().startsWith('/redeem ');
 
-  if (isAwaiting || isRedeemCommand || isAthCodePattern) {
+  if (isAwaiting || isCodeFormat) {
     const code = rawText.replace(/^\/redeem\s*/i, '').trim().toUpperCase();
     const record = activationCodes[code];
 
-    // Case 1: Invalid Code
     if (!record) {
       return ctx.reply(
-        `❌ <b>Invalid Activation Code</b>\n\nThe code «${code}» could not be verified in our records.\n\nPlease check the code received after your order approval and try again.`,
+        `❌ <b>Invalid Activation Code</b>\n\nThe code <code>${code}</code> was not found.\n\nPlease verify the code sent to you upon order approval.`,
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [{ text: '🔄 Try Again', callback_data: 'ACTION_REDEEM' }],
-            [{ text: '◉ Support', url: `https://t.me/${ADMIN_USERNAME}` }],
-            [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
+            [Markup.button.callback('🔑 Try Again', 'ACTION_REDEEM')],
+            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
           ])
         }
       );
     }
 
-    // Case 2: Already Redeemed
     if (record.isRedeemed) {
       return ctx.reply(
-        `⚠️ <b>Code Already Redeemed</b>\n\nThis activation code «${code}» has already been redeemed and linked to an account on ${record.redeemedAt || 'a previous session'}.\n\nEach code can only be activated once. Check your active subscriptions in My Orders.`,
+        `⚠️ <b>Code Already Redeemed</b>\n\nThis activation code was already claimed on <b>${record.redeemedAt}</b>.\n\nEach license code can only be activated once. Check your active tools in My Orders.`,
         {
           parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
-            [{ text: '📦 My Orders', callback_data: 'ACTION_ORDERS', style: 'primary' }],
-            [{ text: '◉ Support', url: `https://t.me/${ADMIN_USERNAME}` }],
-            [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
+            [Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')],
+            [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
           ])
         }
       );
     }
 
-    // Case 3: Valid Code
-    const now = new Date();
-    const expiryDate = new Date(now.getTime() + record.durationDays * 24 * 60 * 60 * 1000);
-
-    const formatDt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    const activationTimeStr = formatDt(now);
-    const expiryTimeStr = formatDt(expiryDate);
-
+    // Mark as redeemed
     record.isRedeemed = true;
+    const now = new Date();
+    const exp = new Date(now.getTime() + record.durationDays * 24 * 60 * 60 * 1000);
+    const activationTimeStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ', ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const expiryTimeStr = exp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
     record.redeemedAt = activationTimeStr;
-    record.expiresAt = expiryTimeStr;
     record.redeemedByUserId = userId;
 
     let credsSummary = '';
-    if (record.credentials.type === 'InviteLink') {
-      credsSummary = `• Invite Link: ${record.credentials.inviteLink}\n• Token: ${record.credentials.licenseKey || code}`;
-    } else if (record.credentials.type === 'Account') {
-      credsSummary = `• Login: <code>${record.credentials.login}</code>\n• Pass: <code>${record.credentials.password}</code>`;
-    } else {
-      credsSummary = `• Key: <code>${record.credentials.licenseKey}</code>`;
+    if (record.credentials.login) {
+      credsSummary = `• <b>Login:</b> <code>${record.credentials.login}</code>\n• <b>Password:</b> <code>${record.credentials.password}</code>`;
+    } else if (record.credentials.inviteLink) {
+      credsSummary = `• <b>Access Link:</b> ${record.credentials.inviteLink}\n• <b>Key:</b> <code>${record.credentials.licenseKey}</code>`;
+    } else if (record.credentials.licenseKey) {
+      credsSummary = `• <b>License Key:</b> <code>${record.credentials.licenseKey}</code>`;
     }
 
     if (!customerOrders[userId]) customerOrders[userId] = [];
@@ -396,8 +364,8 @@ ${credsSummary}
     return ctx.reply(successMessage, {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [{ text: '📦 My Orders', callback_data: 'ACTION_ORDERS', style: 'primary' }],
-        [{ text: '⬅️ Back', callback_data: 'ACTION_MAIN_MENU' }]
+        [Markup.button.callback('📦 My Orders', 'ACTION_ORDERS')],
+        [Markup.button.callback('⬅️ Back', 'ACTION_MAIN_MENU')]
       ])
     });
   }
@@ -429,6 +397,6 @@ bot.launch()
   .then(() => console.log('🚀 ATH Telegram Bot launched successfully!'))
   .catch((err) => console.error('Failed to launch bot:', err));
 
-// Graceful stop
+// Graceful termination
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
